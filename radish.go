@@ -1,9 +1,9 @@
 /*
-Package radish is a stateless task queue and worker protocol that can maximize the
-resources of a single node by increasing and decreasing the number of worker go routines
-that can handle tasks. The radish server allows users to scale the number of workers
-that can handle generic tasks, add tasks to the queue, and reports metrics to prometheus
-for easy tracking and management.
+Package radish is a stateless ansyncrhonous task queue and handler framework that can
+maximize the resources of a single node by increasing and decreasing the number of
+worker go routines that can handle tasks. The radish server allows users to scale the
+number of workers that can handle generic tasks, add tasks to the queue, and reports
+metrics to prometheus for easy tracking and management.
 */
 package radish
 
@@ -12,10 +12,6 @@ import (
 
 	"github.com/pborman/uuid"
 )
-
-// QueueSize specifies the number of tasks that can be in flight at a time. Note that
-// requests to add to the queue when it's full will simply block until they timeout.
-const QueueSize = 5000
 
 // New creates a Radish object with the specified config and registers the specified
 // task handlers. If the handler cannot be registered or the config is invalid an error
@@ -33,7 +29,7 @@ func New(config *Config, tasks ...Task) (r *Radish, err error) {
 	// Create the radish instance
 	r = &Radish{
 		config:   config,
-		tasks:    make(chan *Future, QueueSize),
+		tasks:    make(chan *Future, config.QueueSize),
 		workers:  make([]*worker, 0, config.Workers),
 		handlers: make(map[string]Task),
 	}
@@ -58,11 +54,11 @@ func New(config *Config, tasks ...Task) (r *Radish, err error) {
 // task in the order they are received. Before running the server, tasks must be
 // registered so that the Radish queue knows how to handle them.
 type Radish struct {
-	sync.RWMutex               // server concurrency control for both workers and registration
-	config     *Config         // the radish configuration
-	tasks      chan *Future    // the task queue that workers are operating on
-	workers    []*worker       // the workers that are currently operating on the queue
-	handlers   map[string]Task // all currently registered tasks the server can handle
+	sync.RWMutex                 // server concurrency control for both workers and registration
+	config       *Config         // the radish configuration
+	tasks        chan *Future    // the task queue that workers are operating on
+	workers      []*worker       // the workers that are currently operating on the queue
+	handlers     map[string]Task // all currently registered tasks the server can handle
 }
 
 // Register a task handler with the Radish task queue.
@@ -79,11 +75,6 @@ func (r *Radish) Register(task Task) (err error) {
 	return nil
 }
 
-// Listen on the configured address and port for API requests and run prometheus metrics server.
-func (r *Radish) Listen() (err error) {
-	return nil
-}
-
 // Delay creates a new future and adds it to the task queue if the handler has been registered.
 func (r *Radish) Delay(task string, params, success, failure []byte) (id uuid.UUID, err error) {
 	if _, err = r.Handler(task); err != nil {
@@ -92,9 +83,9 @@ func (r *Radish) Delay(task string, params, success, failure []byte) (id uuid.UU
 
 	// TODO: replace uuid.NewRandom with  uuid.NewUUID?
 	future := &Future{
-		ID: uuid.NewRandom(),
-		Task: task,
-		Params: params,
+		ID:      uuid.NewRandom(),
+		Task:    task,
+		Params:  params,
 		Success: success,
 		Failure: failure,
 	}
@@ -116,11 +107,11 @@ func (r *Radish) SetWorkers(n int) (err error) {
 
 	nworkers := len(r.workers)
 	if n > nworkers {
-		return r.addWorkers(n-nworkers)
+		return r.addWorkers(n - nworkers)
 	}
 
 	if n < nworkers {
-		return r.removeWorkers(nworkers-n)
+		return r.removeWorkers(nworkers - n)
 	}
 
 	return nil
@@ -166,11 +157,11 @@ func (r *Radish) removeWorkers(n int) (err error) {
 		return Errorf(ErrInvalidWorkers, "cannot remove negative workers, use AddWorkers")
 	}
 
-	for i:=0; i < n; i++ {
+	for i := 0; i < n; i++ {
 		w := len(r.workers) - 1
-		r.workers[w].stop <- true  // wait for worker to stop, this should block
-		r.workers[w] = nil         // delete the worker
-		r.workers = r.workers[:w]  // truncate the workers list
+		r.workers[w].stop <- true // wait for worker to stop, this should block
+		r.workers[w] = nil        // delete the worker
+		r.workers = r.workers[:w] // truncate the workers list
 	}
 
 	return nil

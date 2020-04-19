@@ -12,6 +12,7 @@ const (
 	ErrTaskNotRegistered
 	ErrNoWorkers
 	ErrInvalidWorkers
+	ErrBadGateway
 )
 
 // Errorf is a passthrough to api.Errorf, implemented here to allow for radish.Errorf calls.
