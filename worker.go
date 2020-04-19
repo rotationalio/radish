@@ -1,6 +1,6 @@
 package radish
 
-import "github.com/bbengfort/alia/out"
+import "github.com/kansaslabs/x/out"
 
 type worker struct {
 	parent *Radish   // the parent of the worker that has the tasks queue and the handlers

@@ -1,6 +1,6 @@
 package api
 
-import fmt "fmt"
+import "fmt"
 
 // Errorf formats a radish error with the specified code, returning it.
 func Errorf(code int32, format string, a ...interface{}) error {
