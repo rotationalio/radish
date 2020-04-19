@@ -1,0 +1,45 @@
+syntax = "proto3";
+package api;
+
+
+service Radish {
+    rpc Queue (QueueRequest) returns (QueueReply) {}
+    rpc Scale (ScaleRequest) returns (ScaleReply) {}
+    rpc Status (StatusRequest) returns (StatusReply) {}
+}
+
+message QueueRequest {
+    string task = 1;   // the type of task to queue (e.g. the task name)
+    bytes params = 2;  // the data to send in as an argument to the task
+    bytes success = 3; // the parameters to pass into the success callback of the task
+    bytes failure = 4; // the parameters to pass into the failure callback of the task
+}
+
+message QueueReply {
+    bytes uuid = 1;    // the id of the task that was created
+    bool success = 2;  // if the queue request succeeded or failed
+    Error error = 3;   // the error if success is false
+}
+
+message ScaleRequest {
+    int32 workers = 1; // set the number of running workers to this number
+}
+
+message ScaleReply {
+    int32 workers = 1; // the total number of workers now operating
+    bool success = 2;  // if the scale request succeeded or failed
+    Error error = 3;   // the error if success is false
+}
+
+message StatusRequest {}
+
+message StatusReply {
+    int32 workers = 1; // the total number of workers currently running
+    uint64 queue = 2;  // the number of tasks in the queue
+    repeated string tasks = 3; // the names of the registered task types
+}
+
+message Error {
+    int32 code = 1;       // the error code for identification purposes
+    string message = 2;   // a description of the error that occurred
+}
