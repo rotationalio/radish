@@ -50,7 +50,7 @@ tasks for asynchronous processing. If we have two task handlers, SendEmail and
 DailyReport whose names are "sendEmail" and "dailyReport" respectively, then the
 simplest way we can get started is as follows:
 
-	queue, err := radish.New(nil, SendEmail, DailyReport)
+	queue, err := radish.New(nil, new(SendEmail), new(DailyReport))
 	id, err := queue.Delay("sendEmail", []byte("jdoe@example.com"), nil, nil)
 	id, err := queue.Delay("dailyReport", []byte("2020-04-07"), nil, nil)
 
@@ -74,7 +74,7 @@ The config is validated when it is created and any invalid configurations will r
 error when the queue is created. We can also manually register tasks with the queue (and
 register tasks at runtime) as follows:
 
-	err := queue.Register(SendEmail)
+	err := queue.Register(new(SendEmail))
 
 This allows the queue to be dynamic and handle different tasks at different times. It
 is also possible to scale the number of workers at runtime:
@@ -291,7 +291,7 @@ func (r *Radish) NumWorkers() int {
 // Handler is a thread-safe mechanism to fetch a task handler or check if it exists.
 func (r *Radish) Handler(task string) (handler Task, err error) {
 	r.RLock()
-	defer r.Unlock()
+	defer r.RUnlock()
 
 	var ok bool
 	if handler, ok = r.handlers[task]; !ok {

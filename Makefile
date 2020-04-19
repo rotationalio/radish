@@ -29,7 +29,7 @@ RM = $(shell printf "\033[31;1m●\033[0m")
 all: install test
 
 # Build the various binaries and sources
-install: protobuf radish turnip
+install: protobuf radish
 
 # Build and install the radish command in the $GOBIN directory
 radish:
@@ -49,7 +49,7 @@ test:
 # Target for testing in continuous integration
 citest:
 	$(info $(BM) running CI tests with randomization and race …)
-	$(GOTEST) -bench=. -v --cover --trace --race --compilers=2 ./...
+	$(GOTEST) -bench=. -v --cover --race ./...
 
 # Run Godoc server and open browser to the documentation
 doc:

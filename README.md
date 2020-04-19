@@ -2,6 +2,7 @@
 
 [![GoDoc](https://godoc.org/github.com/kansaslabs/radish?status.svg)](https://godoc.org/github.com/kansaslabs/radish)
 [![Go Report Card](https://goreportcard.com/badge/github.com/kansaslabs/radish)](https://goreportcard.com/report/github.com/kansaslabs/radish)
+[![Build Status](https://travis-ci.com/kansaslabs/radish.svg?branch=master)](https://travis-ci.com/kansaslabs/radish)
 
 Radish is a stateless asynchronous task queue and handler framework. Radish is designed to maximize the resources of a single node by being able to flexibly increase and decrease the number of worker go routines that handle tasks. A radish server allows users to scale the number of workers that can handle generic tasks, add tasks to the queue, and reports metrics to prometheus for easy tracking and management. Radish also provides a CLI program for interacting with servers that are running the radish service.
 
@@ -34,9 +35,11 @@ tasks for asynchronous processing. If we have two task handlers, `SendEmail` and
 `DailyReport` whose names are `"sendEmail"` and `"dailyReport"` respectively, then the
 simplest way we can get started is as follows:
 
-	queue, err := radish.New(nil, SendEmail, DailyReport)
-	id, err := queue.Delay("sendEmail", []byte("jdoe@example.com"), nil, nil)
-	id, err := queue.Delay("dailyReport", []byte("2020-04-07"), nil, nil)
+```go
+queue, err := radish.New(nil, new(SendEmail), new(DailyReport))
+id, err := queue.Delay("sendEmail", []byte("jdoe@example.com"), nil, nil)
+id, err := queue.Delay("dailyReport", []byte("2020-04-07"), nil, nil)
+```
 
 When the task queue is created, it immediately launches workers (1 per CPU on the
 machine) to start handling tasks. You can then delay tasks, which will return the unique
@@ -58,7 +61,7 @@ error when the queue is created. We can also manually register tasks with the qu
 register tasks at runtime) as follows:
 
 ```go
-err := queue.Register(SendEmail)
+err := queue.Register(new(SendEmail))
 ```
 
 This allows the queue to be dynamic and handle different tasks at different times. It
