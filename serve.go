@@ -26,6 +26,12 @@ func (r *Radish) Listen() (err error) {
 	return srv.Serve(sock)
 }
 
+// Shutdown the queue gracefully, stopping the server, completing any tasks in flight
+// and stopping workers. Tasks cannot be delayed after shutdown is called.
+func (r *Radish) Shutdown() (err error) {
+	return Errorf(ErrUnknown, "shutdown is not implemented yet")
+}
+
 // Queue an asynchronous task from a gRPC request.
 func (r *Radish) Queue(ctx context.Context, in *api.QueueRequest) (rep *api.QueueReply, err error) {
 	rep = &api.QueueReply{Success: true}
