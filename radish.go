@@ -124,8 +124,12 @@ package radish
 import (
 	"sync"
 
+	"github.com/kansaslabs/x/out"
 	"github.com/pborman/uuid"
 )
+
+// PackageVersion of the current Raft implementation
+const PackageVersion = "1.0"
 
 // New creates a Radish object with the specified config and registers the specified
 // task handlers. If the handler cannot be registered or the config is invalid an error
@@ -186,6 +190,7 @@ func (r *Radish) Register(task Task) (err error) {
 	}
 
 	r.handlers[task.Name()] = task
+	out.Info("registered task %s", task.Name())
 	return nil
 }
 
@@ -251,6 +256,8 @@ func (r *Radish) addWorkers(n int) (err error) {
 		r.workers = append(r.workers, w)
 		go w.run()
 	}
+
+	out.Status("added %d workers -- %d workers running", n, len(r.workers))
 	return nil
 }
 
@@ -278,6 +285,7 @@ func (r *Radish) removeWorkers(n int) (err error) {
 		r.workers = r.workers[:w] // truncate the workers list
 	}
 
+	out.Status("removed %d workers -- %d workers running", n, len(r.workers))
 	return nil
 }
 

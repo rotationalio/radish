@@ -1,6 +1,7 @@
 package radish
 
 import (
+	"log"
 	"runtime"
 	"strings"
 
@@ -8,12 +9,13 @@ import (
 )
 
 var logLevels = map[string]uint8{
-	"trace":  out.LevelTrace,
-	"debug":  out.LevelDebug,
-	"info":   out.LevelInfo,
-	"status": out.LevelStatus,
-	"warn":   out.LevelWarn,
-	"silent": out.LevelSilent,
+	"trace":   out.LevelTrace,
+	"debug":   out.LevelDebug,
+	"info":    out.LevelInfo,
+	"caution": out.LevelCaution,
+	"status":  out.LevelStatus,
+	"warn":    out.LevelWarn,
+	"silent":  out.LevelSilent,
 }
 
 const (
@@ -53,7 +55,7 @@ func (c *Config) Validate() (err error) {
 	} else {
 		c.LogLevel = strings.ToLower(c.LogLevel)
 		if _, ok := logLevels[c.LogLevel]; !ok {
-			return Errorf(ErrInvalidConfig, "%q is an invalid log level, use trace, debug, info, status, warn, or silent", c.LogLevel)
+			return Errorf(ErrInvalidConfig, "%q is an invalid log level, use trace, debug, info, caution, status, warn, or silent", c.LogLevel)
 		}
 	}
 	c.setLogLevel()
@@ -68,6 +70,7 @@ func (c *Config) Validate() (err error) {
 }
 
 func (c *Config) setLogLevel() {
+	out.Init("[radish] ", log.LstdFlags|log.LUTC)
 	out.SetLogLevel(logLevels[c.LogLevel])
 }
 
