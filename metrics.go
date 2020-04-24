@@ -86,24 +86,26 @@ func serveMetrics(metricsAddr string) {
 
 func registerMetrics() error {
 	if err := prometheus.Register(pmWorkers); err != nil {
-		return fmt.Errorf("did not register %s", pmWorkers, err)
+		return fmt.Errorf("did not register %s: %s", pmWorkers, err)
 	}
 	if err := prometheus.Register(pmQueueSize); err != nil {
-		return fmt.Errorf("did not register %s", pmQueueSize, err)
+		return fmt.Errorf("did not register %s: %s", pmQueueSize, err)
 	}
 	if err := prometheus.Register(pmPercentFull); err != nil {
-		return fmt.Errorf("did not register %s", pmPercentFull, err)
+		return fmt.Errorf("did not register %s: %s", pmPercentFull, err)
 	}
 	if err := prometheus.Register(pmPercentSuccess); err != nil {
-		return fmt.Errorf("did not register %s", pmPercentSuccess, err)
+		return fmt.Errorf("did not register %v: %s", pmPercentSuccess, err)
 	}
 	if err := prometheus.Register(pmTasksSucceeded); err != nil {
-		return fmt.Errorf("did not register %s", pmTasksSucceeded, err)
+		return fmt.Errorf("did not register %v: %s", pmTasksSucceeded, err)
 	}
 	if err := prometheus.Register(pmTasksFailed); err != nil {
-		return fmt.Errorf("did not register %s", pmTasksFailed, err)
+		return fmt.Errorf("did not register %v: %s", pmTasksFailed, err)
 	}
 	if err := prometheus.Register(pmTaskLatency); err != nil {
-		return fmt.Errorf("did not register %s", pmTaskLatency, err)
+		return fmt.Errorf("did not register %v: %s", pmTaskLatency, err)
 	}
+
+	return nil
 }
