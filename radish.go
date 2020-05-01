@@ -210,6 +210,10 @@ func (r *Radish) Delay(task string, params, success, failure []byte) (id uuid.UU
 	}
 
 	r.tasks <- future
+
+	// Update the queue size and percent full
+	pmQueueSize.Set(float64(len(r.tasks)))
+	pmPercentFull.Set(float64(len(r.tasks)) / float64(r.config.QueueSize) * 100)
 	return future.ID, nil
 }
 
@@ -257,6 +261,9 @@ func (r *Radish) addWorkers(n int) (err error) {
 		go w.run()
 	}
 
+	// Update the workers gauge
+	pmWorkers.Set(float64(len(r.workers)))
+
 	out.Status("added %d workers -- %d workers running", n, len(r.workers))
 	return nil
 }
@@ -285,6 +292,9 @@ func (r *Radish) removeWorkers(n int) (err error) {
 		r.workers = r.workers[:w] // truncate the workers list
 	}
 
+	// Update the workers gauge
+	pmWorkers.Set(float64(len(r.workers)))
+
 	out.Status("removed %d workers -- %d workers running", n, len(r.workers))
 	return nil
 }
@@ -293,6 +303,10 @@ func (r *Radish) removeWorkers(n int) (err error) {
 func (r *Radish) NumWorkers() int {
 	r.RLock()
 	defer r.RUnlock()
+
+	// Refresh the workers gauge
+	pmWorkers.Set(float64(len(r.workers)))
+
 	return len(r.workers)
 }
 

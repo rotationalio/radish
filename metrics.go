@@ -11,10 +11,10 @@ import (
 )
 
 var (
-	pmWorkers        prometheus.Gauge         // number of available workers
-	pmQueueSize      prometheus.Gauge         // number of tasks in the queue awaiting handling
-	pmPercentFull    prometheus.Gauge         // the percent of the queue that is full * 100
-	pmPercentSuccess *prometheus.GaugeVec     // the percent of tasks successfully completed, labeled by task
+	pmWorkers     prometheus.Gauge // number of available workers
+	pmQueueSize   prometheus.Gauge // number of tasks in the queue awaiting handling
+	pmPercentFull prometheus.Gauge // the percent of the queue that is full * 100
+	// pmPercentSuccess *prometheus.GaugeVec     // the percent of tasks successfully completed, labeled by task
 	pmTasksSucceeded *prometheus.CounterVec   // the count of successfully completed tasks, labeled by task type
 	pmTasksFailed    *prometheus.CounterVec   // the count of failed tasks, labeled by task type
 	pmTaskLatency    *prometheus.HistogramVec // the time it is taking for tasks to complete, labeled by task type, success, and failure
@@ -47,12 +47,13 @@ func initMetrics() {
 		Help:      "the percent of the queue that is already full",
 	})
 
-	pmPercentSuccess = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: pmNamespace,
-		Subsystem: pmSubsystem,
-		Name:      "percent_success",
-		Help:      "the percent of tasks successfully completed, labeled by task",
-	}, []string{"task"})
+	// TODO: Come back to this; would need to keep track of global tasks?
+	// pmPercentSuccess = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	// 	Namespace: pmNamespace,
+	// 	Subsystem: pmSubsystem,
+	// 	Name:      "percent_success",
+	// 	Help:      "the percent of tasks successfully completed, labeled by task",
+	// }, []string{"task"})
 
 	pmTasksSucceeded = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: pmNamespace,
@@ -94,9 +95,9 @@ func registerMetrics() error {
 	if err := prometheus.Register(pmPercentFull); err != nil {
 		return fmt.Errorf("did not register %s: %s", pmPercentFull, err)
 	}
-	if err := prometheus.Register(pmPercentSuccess); err != nil {
-		return fmt.Errorf("did not register %v: %s", pmPercentSuccess, err)
-	}
+	// if err := prometheus.Register(pmPercentSuccess); err != nil {
+	// 	return fmt.Errorf("did not register %v: %s", pmPercentSuccess, err)
+	// }
 	if err := prometheus.Register(pmTasksSucceeded); err != nil {
 		return fmt.Errorf("did not register %v: %s", pmTasksSucceeded, err)
 	}
