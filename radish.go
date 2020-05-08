@@ -322,3 +322,7 @@ func (r *Radish) Handler(task string) (handler Task, err error) {
 
 	return handler, nil
 }
+
+func init() {
+	initMetrics()
+}
