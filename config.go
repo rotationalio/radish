@@ -19,8 +19,9 @@ var logLevels = map[string]uint8{
 }
 
 const (
-	defaultQueueSize = 5000
-	defaultAddr      = ":5356"
+	defaultQueueSize   = 5000
+	defaultAddr        = ":5356"
+	defaultMetricsAddr = ":9090"
 )
 
 // Config allows you to specify runtime options to the Radish server and job queue.
@@ -28,6 +29,8 @@ type Config struct {
 	QueueSize        int    // specifies the size of the tasks channel, delay requests will block if the queue is full (default 5000, cannot be 0)
 	Workers          int    // the number of workers to start radish with (default is num cpus)
 	Addr             string // server address to listen on (default :5356)
+	MetricsAddr      string // address to serve prometheus metrics on (default :9090)
+	SuppressMetrics  bool   // do not register or serve prometheus metrics (default false)
 	LogLevel         string // the level to log at (default is info)
 	CautionThreshold uint   // the number of messages accumulated before issuing another caution
 }
@@ -47,6 +50,11 @@ func (c *Config) Validate() (err error) {
 	// Handle the addr
 	if c.Addr == "" {
 		c.Addr = defaultAddr
+	}
+
+	// Handle the metrics addr
+	if c.MetricsAddr == "" {
+		c.MetricsAddr = defaultMetricsAddr
 	}
 
 	// Handle the log level

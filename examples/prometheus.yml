@@ -1,0 +1,6 @@
+# An example Prometheus configuration to scrape a single endpoint from docker-compose
+scrape_configs:
+  - job_name: 'radish'
+    scrape_interval: 1s
+    static_configs:
+      - targets: ['docker.for.mac.localhost:9090']
