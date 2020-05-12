@@ -15,6 +15,7 @@ GOGET = $(GOCMD) get
 GOTEST = $(GOCMD) test
 GOINSTALL = $(GOCMD) install
 GOCLEAN = $(GOCMD) clean
+GOGENERATE = $(GOCMD) generate
 
 # Output Helpers
 BM  = $(shell printf "\033[34;1m●\033[0m")
@@ -29,7 +30,7 @@ RM = $(shell printf "\033[31;1m●\033[0m")
 all: install test
 
 # Build the various binaries and sources
-install: protobuf radish
+install: generate radish
 
 # Build and install the radish command in the $GOBIN directory
 radish:
@@ -40,6 +41,11 @@ radish:
 turnip:
 	$(info $(GM) compiling turnip executable with go install …)
 	@ $(GOINSTALL) ./cmd/turnip
+
+# Run go generate to build protocol buffers and other files
+generate:
+	$(info $(BM) running go generate …)
+	@ $(GOGENERATE) ./...
 
 # Target for simple testing on the command line
 test:
@@ -64,7 +70,7 @@ clean:
 	@ $(GOCLEAN)
 	@ find . -name "*.coverprofile" -print0 | xargs -0 rm -rf
 
-# Compile protocol buffers
+# Compile protocol buffers (use go generate instead)
 protobuf:
 	$(info $(GM) compiling protocol buffers …)
 	@ $(PROTOC) -I $(PBPKG) $(PBPKG)/*.proto --go_out=plugins=grpc:$(PBPKG)
