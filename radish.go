@@ -128,7 +128,7 @@ import (
 	"github.com/pborman/uuid"
 )
 
-// PackageVersion of the current Raft implementation
+// PackageVersion of the current Radish implementation
 const PackageVersion = "1.0"
 
 // New creates a Radish object with the specified config and registers the specified
