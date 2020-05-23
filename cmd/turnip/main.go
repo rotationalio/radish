@@ -49,6 +49,12 @@ func main() {
 					Value:  ":5356",
 					EnvVar: "TURNIP_ADDR",
 				},
+				cli.StringFlag{
+					Name:   "m, metrics-addr",
+					Usage:  "the address to serve prometheus metrics on",
+					Value:  ":9090",
+					EnvVar: "TURNIP_METRICS_ADDR",
+				},
 				cli.IntFlag{
 					Name:   "w, workers",
 					Usage:  "number of workers to start with (default is num cpus)",
@@ -72,6 +78,11 @@ func main() {
 					Value:  50,
 					EnvVar: "TURNIP_CAUTION_THRESHOLD",
 				},
+				cli.BoolFlag{
+					Name:   "S, no-metrics",
+					Usage:  "do not run the prometheus metrics server",
+					EnvVar: "TURNIP_SUPPRESS_METRICS",
+				},
 			},
 		},
 	}
@@ -86,6 +97,8 @@ func serve(c *cli.Context) (err error) {
 		QueueSize:        c.Int("queue-size"),
 		Workers:          c.Int("workers"),
 		Addr:             c.String("addr"),
+		MetricsAddr:      c.String("metrics-addr"),
+		SuppressMetrics:  c.Bool("no-metrics"),
 		LogLevel:         c.String("log-level"),
 		CautionThreshold: c.Uint("caution-threshold"),
 	}

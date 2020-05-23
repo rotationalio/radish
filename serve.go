@@ -12,6 +12,13 @@ import (
 
 // Listen on the configured address and port for API requests and run prometheus metrics server.
 func (r *Radish) Listen() (err error) {
+	if !r.config.SuppressMetrics {
+		if err = registerMetrics(); err != nil {
+			return fmt.Errorf("could not register prometheus metrics: %s", err)
+		}
+		go serveMetrics(r.config.MetricsAddr)
+	}
+
 	// Open TCP socket to listen on from the configuration
 	var sock net.Listener
 	if sock, err = net.Listen("tcp", r.config.Addr); err != nil {

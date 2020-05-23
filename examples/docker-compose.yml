@@ -1,0 +1,19 @@
+version: '2'
+services:
+  turnip:
+    image: kansaslabs/turnip:latest
+    ports:
+    - 5356:5356
+    - 9090:9090
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+    - 8080:8080
+    volumes:
+    - ./prometheus.yml:/etc/prometheus/prometheus.yml
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+    - 3000:3000
+    volumes:
+    - ./.docker/grafana:/var/lib/grafana
