@@ -6,9 +6,9 @@ The `examples` folder contains `turnip`, an example of a service that implements
 
 After installing [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop), run docker from inside the `examples` directory:
 
-    ```bash
-    $ docker-compose up
-    ```
+```bash
+$ docker-compose up
+```
 
 You'll now be running three services:
 - Turnip: a demo of using the radish API implemented in the `turnip` directory, which is serving metrics on port 9090.

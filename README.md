@@ -112,4 +112,67 @@ The radish CLI command can then be used to access the service and submit tasks.
 
 ### Metrics
 
-Radish also serves a metrics endpoint that can be polled by Prometheus.
+Radish also serves a metrics endpoint that can be polled by Prometheus. Radish keeps track of the following metrics associated with the task queue:
+
+- **radish.workers**: A gauge that tracks the number of workers over time as users issue scale requests.
+- **radish.queue_size**: A gauge that tracks the number of the tasks in the queue currently awaiting handling.
+- **radish.percent_full**: A gauge that tracks the relative fullness of the task queue based on the configured queue size.
+- **radish.tasks_succeeded**: A counter that tracks the number of tasks that have been handled and succeeded, labeled by task name.
+- **radish.tasks_failed**: A counter that tracks the number of tasks that have been handled and failed, labeled by task name.
+- **radish.task_latency**: A histogram that tracks the amount of time it takes to handle the task and its success or failure callback in milliseconds; labeled by task name and result (success or failure).
+
+**Coming soon:** If you have your own Prometheus endpoint, you will be able to register Radish metrics manually without serving them in Radish.
+
+## Radish CLI
+
+The `radish` CLI utility is found in `cmd/radish` and can be installed as follows:
+
+```
+$ go get github.com/kansaslabs/radish/cmd/radish
+```
+
+This utility allows you to interact with _any_ radish server and can be used to manage your task queue services out of the box. You can view the commands and options using `radish --help`. In order to connect to a radish server you need to specify options as follows:
+
+```
+$ radish -a localhost:5356 -U
+```
+
+This connects radish to a server on port 5356 on the local host without TLS (the `-U` stands for "unsecure"). Note that you can also use the `$RADISH_ENDPOINT` and `$RADISH_UNSECURE` environment variables.
+
+> The misspelling of "unsecure" is a joke, radish is not insecure it's just not connecting with encryption.
+
+After the connection options are specified you can use a command to interact with the server. For example to set the number of workers you can use the `scale` command:
+
+```
+$ radish -a localhost:5356 -U scale -w 12
+```
+
+To get the status of the server and the currently registered tasks you can use the `status` command:
+
+```
+$ radish -a localhost:5356 -U status
+```
+
+Finally, once you know the names of the tasks that the radish server is handling, you can queue tasks as follows:
+
+```
+$ radish -a localhost:5356 -U queue -t mytask -p '{"my": "data"}'
+```
+
+The CLI interface is meant to help you get quickly started with Radish task queues without having to write your own interfaces or servers.
+
+## Turnip
+
+An example metrics server with tasks that simply wait and have a random chance of failure is defined in `cmd/turnip`. This server is also used to benchmark Radish performance and throughput with variable length tasks. See the `examples/README.md` for more on how to get started with Turnip.
+
+To build the Turnip image ensure you're in the root of the repository:
+
+```
+$ docker build -t kansaslabs/turnip:latest -f examples/Dockerfile .
+```
+
+KansasLabs administrators can then push this image to Dockerhub as follows:
+
+```
+$ docker push kansaslabs/turnip:latest
+```

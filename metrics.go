@@ -22,27 +22,23 @@ var (
 
 const (
 	pmNamespace = "radish"
-	pmSubsystem = "queue"
 )
 
 func initMetrics() {
 	pmWorkers = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: pmNamespace,
-		Subsystem: pmSubsystem,
 		Name:      "workers",
 		Help:      "The number of available workers",
 	})
 
 	pmQueueSize = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: pmNamespace,
-		Subsystem: pmSubsystem,
 		Name:      "queue_size",
 		Help:      "number of tasks in the queue awaiting handling",
 	})
 
 	pmPercentFull = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: pmNamespace,
-		Subsystem: pmSubsystem,
 		Name:      "percent_full",
 		Help:      "the percent of the queue that is already full",
 	})
@@ -50,28 +46,24 @@ func initMetrics() {
 	// TODO: Come back to this; would need to keep track of global tasks?
 	// pmPercentSuccess = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 	// 	Namespace: pmNamespace,
-	// 	Subsystem: pmSubsystem,
 	// 	Name:      "percent_success",
 	// 	Help:      "the percent of tasks successfully completed, labeled by task",
 	// }, []string{"task"})
 
 	pmTasksSucceeded = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: pmNamespace,
-		Subsystem: pmSubsystem,
 		Name:      "tasks_succeeded",
 		Help:      "the count of tasks successfully completed, labeled by task type",
 	}, []string{"task"})
 
 	pmTasksFailed = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: pmNamespace,
-		Subsystem: pmSubsystem,
 		Name:      "tasks_failed",
 		Help:      "the count of failed tasks, labeled by task type",
 	}, []string{"task"})
 
 	pmTaskLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: pmNamespace,
-		Subsystem: pmSubsystem,
 		Name:      "task_latency",
 		Help:      "time to task completion, labeled by task type, success, and failure",
 	}, []string{"task", "result"})

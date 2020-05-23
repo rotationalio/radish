@@ -60,7 +60,7 @@ func main() {
 		cli.BoolFlag{
 			Name:   "U, unsecure",
 			Usage:  "do not connect with TLS, connect unsecure",
-			EnvVar: "RADISH_INSECURE",
+			EnvVar: "RADISH_UNSECURE",
 		},
 	}
 
