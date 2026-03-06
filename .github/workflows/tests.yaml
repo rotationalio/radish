@@ -1,0 +1,82 @@
+name: CI Tests
+on:
+  push:
+    branches:
+      - main
+      - 'v*'
+    tags:
+      - 'v*'
+  pull_request:
+
+jobs:
+  go-lint:
+    name: Go Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.x
+
+      - name: Install Staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+      - name: Checkout Code
+        uses: actions/checkout@v5
+
+      - name: Lint Go Code
+        run: staticcheck ./...
+
+  go-test:
+    name: Go Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: rotational
+          POSTGRES_PASSWORD: theeaglefliesatdawn
+          POSTGRES_DB: rotational
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      GOPATH: ${{ github.workspace }}/go
+      GOBIN: ${{ github.workspace }}/go/bin
+      GOTEST_GITHUB_ACTIONS: 1
+      DATABASE_URL: "postgres://rotational:theeaglefliesatdawn@localhost:5432/rotational?sslmode=disable"
+    defaults:
+      run:
+        working-directory: ${{ env.GOPATH }}/src/go.rtnl.ai/radish
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.x
+
+      - name: Cache Speedup
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Checkout Code
+        uses: actions/checkout@v5
+        with:
+          path: ${{ env.GOPATH }}/src/go.rtnl.ai/radish
+
+      - name: Install Dependencies
+        run: |
+          go version
+
+      - name: Code Generation
+        run: go generate ./...
+
+      - name: Run Unit Tests
+        run: go test -v -coverprofile=coverage.txt -covermode=atomic --race ./...

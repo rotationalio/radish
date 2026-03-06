@@ -14,5 +14,13 @@
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
-# Docker
-.docker
+# Local environment variables and secrets
+.env
+.secret
+tmp
+
+# IDEs
+.vscode
+
+# OS files
+.DS_Store
