@@ -4,6 +4,7 @@ go 1.25.6
 
 require (
 	github.com/stretchr/testify v1.11.1
+	go.rtnl.ai/ulid v1.2.0
 	go.rtnl.ai/x v1.10.0
 )
 
