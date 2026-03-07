@@ -139,3 +139,12 @@ func (w *Workers) add(task Task, factory worker.Factory) error {
 
 	return nil
 }
+
+func (w *Workers) Has(kind string) bool {
+	_, ok := w.workers[kind]
+	return ok
+}
+
+func (w *Workers) Len() int {
+	return len(w.workers)
+}
