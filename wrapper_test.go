@@ -3,6 +3,7 @@ package radish
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"sync"
 	"testing"
@@ -28,7 +29,7 @@ type RandomWorker struct {
 
 func (w *RandomWorker) Do(ctx context.Context, task *TaskInfo[*RandomTask]) error {
 	time.Sleep(task.Task.Sleep)
-	task.Task.Value = rand.Intn(100)
+	task.Task.Value = rand.Intn(math.MaxInt)
 	return nil
 }
 
