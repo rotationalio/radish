@@ -1,11 +1,12 @@
 module go.rtnl.ai/radish
 
-go 1.25.6
+go 1.26.1
 
 require (
 	github.com/stretchr/testify v1.11.1
+	go.rtnl.ai/confire v1.2.0
 	go.rtnl.ai/ulid v1.2.0
-	go.rtnl.ai/x v1.10.0
+	go.rtnl.ai/x v1.15.0
 )
 
 require (

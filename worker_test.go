@@ -88,6 +88,40 @@ func TestWorkFunc(t *testing.T) {
 // Workers Tests
 //============================================================================
 
+func TestRegister(t *testing.T) {
+	conf := mockConfig(t)
+
+	t.Run("HappyPath", func(t *testing.T) {
+		tasks, err := radish.New(conf)
+
+		require.NoError(t, err)
+		require.False(t, tasks.IsRunning())
+		require.NoError(t, radish.Register(tasks, new(SleepWorker)))
+		require.NoError(t, radish.Register(tasks, new(SortWorker)))
+		require.NoError(t, radish.Register(tasks, new(RandomFailureWorker)))
+
+		workers := tasks.Workers()
+		require.Equal(t, 7, workers.Len())
+		require.True(t, workers.Has("sleep"))
+		require.True(t, workers.Has("sort"))
+		require.True(t, workers.Has("failchance"))
+	})
+
+	t.Run("Running", func(t *testing.T) {
+		// Cannot register tasks while the radish instance is running.
+		tasks, err := radish.New(conf)
+		require.NoError(t, err)
+
+		require.NoError(t, radish.Register(tasks, new(SleepWorker)))
+		tasks.Run()
+		defer tasks.Shutdown()
+
+		require.True(t, tasks.IsRunning())
+		err = radish.Register(tasks, new(SortWorker))
+		require.ErrorIs(t, err, radish.ErrRunning)
+	})
+}
+
 func TestWorkers(t *testing.T) {
 	t.Run("HappyPath", func(t *testing.T) {
 		workers := &radish.Workers{}

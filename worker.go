@@ -85,10 +85,20 @@ func (wf *workFunc[T]) Do(ctx context.Context, task *TaskInfo[T]) error {
 //============================================================================
 
 func Register[T Task](r *Radish, worker Worker[T]) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.isRunning() {
+		return ErrRunning
+	}
 	return AddWorkerSafe(r.workers, worker)
 }
 
 func MustRegister[T Task](r *Radish, worker Worker[T]) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.isRunning() {
+		panic(ErrRunning)
+	}
 	AddWorker(r.workers, worker)
 }
 
