@@ -84,6 +84,14 @@ func (wf *workFunc[T]) Do(ctx context.Context, task *TaskInfo[T]) error {
 // Workers Registration and Wrapper
 //============================================================================
 
+func Register[T Task](r *Radish, worker Worker[T]) error {
+	return AddWorkerSafe(r.workers, worker)
+}
+
+func MustRegister[T Task](r *Radish, worker Worker[T]) {
+	AddWorker(r.workers, worker)
+}
+
 func AddWorker[T Task](w *Workers, worker Worker[T]) {
 	if err := AddWorkerSafe(w, worker); err != nil {
 		panic(err)

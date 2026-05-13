@@ -54,8 +54,19 @@ func TestFactory(t *testing.T) {
 		wg.Add(1)
 		go func(task worker.Worker) {
 			defer wg.Done()
+
+			var ctx context.Context
+			if timeout := task.Timeout(); timeout > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(context.Background(), timeout)
+				defer cancel()
+			} else {
+				ctx = context.Background()
+			}
+
 			require.NoError(t, task.UnmarshalTask())
-			require.NoError(t, task.Do(context.Background()))
+			require.NoError(t, task.Do(ctx))
+			require.Nil(t, task.Retry())
 		}(task)
 	}
 
