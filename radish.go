@@ -4,7 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"sync"
-	"time"
+
+	"go.rtnl.ai/radish/jitter"
 )
 
 var (
@@ -132,7 +133,7 @@ func (e *executor) run(wg *sync.WaitGroup) {
 	// Execute the poll loop in a goroutine.
 	go func(stop <-chan struct{}, wg *sync.WaitGroup) {
 		defer wg.Done()
-		poll := time.NewTicker(e.conf.PollInterval)
+		poll := jitter.New(e.conf.PollInterval, e.conf.PollJitter)
 		defer poll.Stop()
 
 		// Poll for new tasks to execute

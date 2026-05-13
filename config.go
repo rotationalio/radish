@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"go.rtnl.ai/confire"
+	"go.rtnl.ai/radish/jitter"
 )
 
 const Prefix = "radish"
@@ -46,6 +47,10 @@ func (c Config) Validate() (err error) {
 
 	if c.PollInterval <= 0 {
 		err = confire.Join(err, confire.Required("radish", "poll_interval"))
+	} else {
+		if jerr := jitter.Check(c.PollInterval, c.PollJitter); jerr != nil {
+			err = confire.Join(err, confire.Invalid("radish", "poll_jitter", "the poll interval and jitter must create a positive distribution range"))
+		}
 	}
 
 	return err
