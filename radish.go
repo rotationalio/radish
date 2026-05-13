@@ -1,10 +1,10 @@
 package radish
 
 import (
-	"database/sql"
 	"errors"
 	"sync"
 
+	"go.rtnl.ai/radish/db"
 	"go.rtnl.ai/radish/jitter"
 )
 
@@ -18,14 +18,12 @@ type Radish struct {
 	wg        *sync.WaitGroup
 	conf      Config
 	workers   *Workers
-	conn      *sql.DB
 	executors []*executor
 }
 
 type executor struct {
 	conf    *Config
 	workers *Workers
-	conn    *sql.DB
 	stop    chan<- struct{}
 }
 
@@ -72,9 +70,13 @@ func (r *Radish) Run() error {
 		if r.conf.Conn == nil {
 			return ErrNoDatabase
 		}
-		r.conn = r.conf.Conn
+		if err := db.Use(r.conf.Conn); err != nil {
+			return err
+		}
 	} else {
-		// TODO: Connect to the database using the provided database URL.
+		if err := db.Connect(r.conf.DatabaseURL); err != nil {
+			return err
+		}
 	}
 
 	// Create a wait group to wait for all executors to finish.
@@ -83,7 +85,7 @@ func (r *Radish) Run() error {
 
 	// Create the executors with a copy of the config and workers to execute tasks in parallel.
 	for i := 0; i < r.conf.NumWorkers; i++ {
-		executor := &executor{conf: &r.conf, workers: r.workers, conn: r.conn}
+		executor := &executor{conf: &r.conf, workers: r.workers}
 		r.executors = append(r.executors, executor)
 		executor.run(r.wg)
 	}

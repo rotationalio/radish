@@ -16,22 +16,22 @@ var (
 	statusValues   = []status.Status{
 		status.StatusUnknown,
 		status.StatusPending,
-		status.StatusRunning,
-		status.StatusSuccess,
-		status.StatusFailure,
 		status.StatusRetry,
-		status.StatusRevoked,
 		status.StatusScheduled,
+		status.StatusRunning,
+		status.StatusSucceeded,
+		status.StatusFailed,
+		status.StatusCancelled,
 	}
 	statusStrings = []string{
 		"unknown",
 		"pending",
-		"running",
-		"success",
-		"failure",
 		"retry",
-		"revoked",
 		"scheduled",
+		"running",
+		"succeeded",
+		"failed",
+		"cancelled",
 	}
 )
 
@@ -144,7 +144,6 @@ func TestJSON(t *testing.T) {
 }
 
 func TestDatabase(t *testing.T) {
-	// TODO: implement scan and value tests
 	t.Run("VARCHAR", func(t *testing.T) {
 		// Ensure that all string representations are less than or equal to the db VARCHAR limit
 		for _, enum := range statusValues {
