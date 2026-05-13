@@ -113,8 +113,7 @@ func TestRegister(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, radish.Register(tasks, new(SleepWorker)))
-		tasks.Run()
-		defer tasks.Shutdown()
+		tasks.MarkRunning()
 
 		require.True(t, tasks.IsRunning())
 		err = radish.Register(tasks, new(SortWorker))

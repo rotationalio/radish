@@ -12,12 +12,12 @@ type Status uint8
 const (
 	StatusUnknown Status = iota
 	StatusPending
-	StatusRunning
-	StatusSuccess
-	StatusFailure
 	StatusRetry
-	StatusRevoked
 	StatusScheduled
+	StatusRunning
+	StatusSucceeded
+	StatusFailed
+	StatusCancelled
 
 	// The terminator is used to determine the last value of the enum.
 	statusTerminator
@@ -26,12 +26,12 @@ const (
 var statusNames = [8]string{
 	"unknown",
 	"pending",
-	"running",
-	"success",
-	"failure",
 	"retry",
-	"revoked",
 	"scheduled",
+	"running",
+	"succeeded",
+	"failed",
+	"cancelled",
 }
 
 func Parse(s any) (Status, error) {
