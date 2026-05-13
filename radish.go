@@ -108,7 +108,6 @@ func (r *Radish) Shutdown() {
 
 	r.executors = nil
 	r.wg = nil
-	return
 }
 
 func (r *Radish) IsRunning() bool {
