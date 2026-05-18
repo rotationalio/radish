@@ -43,3 +43,19 @@ type TaskMeta struct {
 	Created  time.Time
 	Modified time.Time
 }
+
+func (t *TaskMeta) Scan(s Scanner) error {
+	return s.Scan(
+		&t.ID,
+		&t.Kind,
+		&t.Status,
+		&t.Payload,
+		&t.Attempts,
+		&t.Errors,
+		&t.VisibleAt,
+		&t.LastAttempt,
+		&t.Finished,
+		&t.Created,
+		&t.Modified,
+	)
+}

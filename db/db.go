@@ -103,16 +103,32 @@ func Close() error {
 	return err
 }
 
-func ExecContext(ctx context.Context, query string, args ...any) (result sql.Result, err error) {
+func Exec(ctx context.Context, query string, args ...any) (result sql.Result, err error) {
 	mu.RLock()
 	defer mu.RUnlock()
+
 	if conn == nil {
 		return nil, ErrNotConnected
 	}
+
 	if result, err = conn.ExecContext(ctx, query, args...); err != nil {
 		return nil, dbe(err)
 	}
 	return result, nil
+}
+
+func QueryRow(ctx context.Context, query string, args ...any) (row *sql.Row, err error) {
+	mu.RLock()
+	defer mu.RUnlock()
+
+	if conn == nil {
+		return nil, ErrNotConnected
+	}
+
+	if row = conn.QueryRowContext(ctx, query, args...); err != nil {
+		return nil, dbe(err)
+	}
+	return row, nil
 }
 
 func Begin() (*sql.Tx, error) {
