@@ -125,9 +125,7 @@ func QueryRow(ctx context.Context, query string, args ...any) (row *sql.Row, err
 		return nil, ErrNotConnected
 	}
 
-	if row = conn.QueryRowContext(ctx, query, args...); err != nil {
-		return nil, dbe(err)
-	}
+	row = conn.QueryRowContext(ctx, query, args...)
 	return row, nil
 }
 
