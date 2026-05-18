@@ -10,15 +10,16 @@ import (
 
 var (
 	// Database constraint errors
-	ErrAlreadyExists    = errors.New("record already exists in the database")
-	ErrConstraint       = errors.New("a database constraint was violated")
-	ErrDBReference      = errors.New("missing id of foreign key reference")
-	ErrDeleteRestricted = errors.New("cannot delete record because other records depend on it")
-	ErrNotFound         = errors.New("record not found in the database")
-	ErrNotNull          = errors.New("cannot set a required field to null")
-	ErrReadOnly         = errors.New("database or transaction is read-only")
-	ErrAlreadyConnected = errors.New("database connection already established")
-	ErrNotConnected     = errors.New("database connection not established")
+	ErrAlreadyExists     = errors.New("record already exists in the database")
+	ErrConstraint        = errors.New("a database constraint was violated")
+	ErrDBReference       = errors.New("missing id of foreign key reference")
+	ErrDeleteRestricted  = errors.New("cannot delete record because other records depend on it")
+	ErrNotFound          = errors.New("record not found in the database")
+	ErrNotNull           = errors.New("cannot set a required field to null")
+	ErrReadOnly          = errors.New("database or transaction is read-only")
+	ErrAlreadyConnected  = errors.New("database connection already established")
+	ErrNotConnected      = errors.New("database connection not established")
+	ErrTaskNotCancelable = errors.New("task cannot be cancelled")
 )
 
 func dbe(err error) error {
