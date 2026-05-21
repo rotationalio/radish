@@ -6,7 +6,7 @@ require (
 	github.com/lib/pq v1.12.3
 	github.com/stretchr/testify v1.11.1
 	go.rtnl.ai/confire v1.2.0
-	go.rtnl.ai/x v1.15.0
+	go.rtnl.ai/x v1.16.0
 )
 
 require (

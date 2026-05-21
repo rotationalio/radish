@@ -4,7 +4,8 @@ import (
 	"errors"
 	"sync"
 
-	"go.rtnl.ai/radish/db"
+	"go.rtnl.ai/radish/broker"
+	"go.rtnl.ai/radish/broker/postgres"
 	"go.rtnl.ai/radish/jitter"
 )
 
@@ -19,6 +20,7 @@ type Radish struct {
 	conf      Config
 	workers   *Workers
 	executors []*executor
+	broker    broker.Broker
 }
 
 type executor struct {
@@ -58,7 +60,7 @@ func New(conf *Config) (_ *Radish, err error) {
 
 // Starts the radish executors each in their own goroutine with a copy of the config
 // and workers to execute tasks in parallel. Returns an error if radish is already running.
-func (r *Radish) Run() error {
+func (r *Radish) Run() (err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.isRunning() {
@@ -70,11 +72,13 @@ func (r *Radish) Run() error {
 		if r.conf.Conn == nil {
 			return ErrNoDatabase
 		}
-		if err := db.Use(r.conf.Conn); err != nil {
+
+		// TODO: allow using other database connection types besides postgres.
+		if r.broker, err = postgres.Use(r.conf.Conn); err != nil {
 			return err
 		}
 	} else {
-		if err := db.Connect(r.conf.DatabaseURL); err != nil {
+		if r.broker, err = broker.Connect(r.conf.DatabaseURL); err != nil {
 			return err
 		}
 	}
@@ -89,7 +93,6 @@ func (r *Radish) Run() error {
 		r.executors = append(r.executors, executor)
 		executor.run(r.wg)
 	}
-
 	return nil
 }
 
