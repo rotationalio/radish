@@ -15,8 +15,24 @@ type Broker struct {
 	db *sql.DB
 }
 
+const infoSQL = `
+-- Get information about a task by its id.
+SELECT * FROM radish_tasks WHERE id = $1;
+`
+
+// Get information about a task by its id.
 func (b *Broker) Info(ctx context.Context, id int64) (task *models.TaskMeta, err error) {
-	return nil, nil
+	var row *sql.Row
+	if row, err = b.QueryRow(ctx, infoSQL, id); err != nil {
+		return nil, err
+	}
+
+	task = &models.TaskMeta{}
+	if err = task.Scan(row); err != nil {
+		return nil, dbe(err)
+	}
+
+	return task, nil
 }
 
 const enqueueSQL = `

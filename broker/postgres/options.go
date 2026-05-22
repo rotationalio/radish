@@ -8,7 +8,7 @@ import (
 	"go.rtnl.ai/x/dsn"
 )
 
-type PostgresOptions struct {
+type Options struct {
 	MaxIdleConns    int
 	MaxOpenConns    int
 	ConnMaxLifetime time.Duration
@@ -21,8 +21,11 @@ var defaultOptions = map[string]string{
 	"fallback_application_name": "radish",
 }
 
-func ConnectionOptions(dsn dsn.DSN) (connStr string, opts *PostgresOptions, err error) {
+func ConnectionOptions(dsn *dsn.DSN) (connStr string, opts *Options, err error) {
 	// Make a copy of the database URL to avoid modifying the original.
+	dsn = dsn.Clone()
+
+	// Ensure there is an options map if needed.
 	if dsn.Options == nil {
 		dsn.Options = make(map[string]string, 0)
 	}
@@ -35,7 +38,7 @@ func ConnectionOptions(dsn dsn.DSN) (connStr string, opts *PostgresOptions, err 
 	}
 
 	// Parse the options into a PostgresOptions struct.
-	opts = &PostgresOptions{
+	opts = &Options{
 		MaxIdleConns:    128,
 		MaxOpenConns:    512,
 		ConnMaxLifetime: 60 * time.Minute,

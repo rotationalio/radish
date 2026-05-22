@@ -28,9 +28,9 @@ func Connect(uri *dsn.DSN) (broker *Broker, err error) {
 
 	var (
 		connStr string
-		opts    *PostgresOptions
+		opts    *Options
 	)
-	if connStr, opts, err = ConnectionOptions(*uri); err != nil {
+	if connStr, opts, err = ConnectionOptions(uri); err != nil {
 		return nil, err
 	}
 

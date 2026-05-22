@@ -6,6 +6,7 @@ import (
 
 var (
 	// Database constraint errors
+	ErrBusy              = errors.New("database is busy and cannot acquire lock")
 	ErrAlreadyExists     = errors.New("record already exists in the database")
 	ErrConstraint        = errors.New("a database constraint was violated")
 	ErrDBReference       = errors.New("missing id of foreign key reference")

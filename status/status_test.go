@@ -14,14 +14,14 @@ import (
 var (
 	defaultInvalid = []any{"foo", "123", "INVALID", 257, -1, 3.14, struct{}{}, true, false}
 	statusValues   = []status.Status{
-		status.StatusUnknown,
-		status.StatusPending,
-		status.StatusRetry,
-		status.StatusScheduled,
-		status.StatusRunning,
-		status.StatusSucceeded,
-		status.StatusFailed,
-		status.StatusCancelled,
+		status.Unknown,
+		status.Pending,
+		status.Retry,
+		status.Scheduled,
+		status.Running,
+		status.Succeeded,
+		status.Failed,
+		status.Cancelled,
 	}
 	statusStrings = []string{
 		"unknown",
@@ -46,11 +46,11 @@ func TestString(t *testing.T) {
 
 	// Test Zero Values
 	zero := status.Status(0)
-	require.Equal(t, status.StatusUnknown.String(), zero.String(), "expected status to have string representation \"unknown\" for zero value")
+	require.Equal(t, status.Unknown.String(), zero.String(), "expected status to have string representation \"unknown\" for zero value")
 
 	empty, err := status.Parse("")
 	require.NoError(t, err, "failed to parse empty string for status")
-	require.Equal(t, status.StatusUnknown.String(), empty.String(), "expected status to have string representation \"unknown\" for empty string not %q", empty.String())
+	require.Equal(t, status.Unknown.String(), empty.String(), "expected status to have string representation \"unknown\" for empty string not %q", empty.String())
 }
 
 func TestStringBounds(t *testing.T) {
@@ -67,12 +67,12 @@ func TestStringBounds(t *testing.T) {
 	}
 
 	above := status.Status(max + 1)
-	require.Equal(t, status.StatusUnknown.String(), above.String(), "expected status to have string representation \"unknown\" for unknown value")
+	require.Equal(t, status.Unknown.String(), above.String(), "expected status to have string representation \"unknown\" for unknown value")
 
 	// Test zero value
 	if min > 0 {
 		zero := status.Status(0)
-		require.Equal(t, status.StatusUnknown.String(), zero.String(), "expected status to have string representation \"unknown\" for zero value")
+		require.Equal(t, status.Unknown.String(), zero.String(), "expected status to have string representation \"unknown\" for zero value")
 	}
 }
 
