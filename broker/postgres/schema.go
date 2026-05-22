@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -30,7 +31,7 @@ BEGIN
             'running',
             'succeeded',
             'failed',
-            'cancelled',
+            'cancelled'
         );
     END IF;
 END $$;
@@ -63,7 +64,7 @@ func initializeSchema(ctx context.Context, conn *sql.DB) (err error) {
 
 	// Acquire the advisory lock.
 	if _, err = cur.ExecContext(ctx, acquireMigrationLockSQL, AdvisoryLockID); err != nil {
-		return err
+		return fmt.Errorf("could not acquire advisory lock: %w", err)
 	}
 
 	// Ensure the advisory lock is released.
@@ -75,7 +76,7 @@ func initializeSchema(ctx context.Context, conn *sql.DB) (err error) {
 
 	// Execute the schema.
 	if _, err = cur.ExecContext(ctx, radishSchemaSQL); err != nil {
-		return err
+		return fmt.Errorf("could not execute schema: %w", err)
 	}
 
 	return nil

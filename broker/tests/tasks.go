@@ -66,14 +66,14 @@ func (a TaskAssertions) NoFinished() {
 
 // Asserts that the given task has no errors.
 func (a TaskAssertions) NoErrors() {
-	if a.actual.Errors != nil && len(a.actual.Errors) > 0 {
+	if len(a.actual.Errors) > 0 {
 		a.require.FailNow("expected no errors but task has %d errors: %v", len(a.actual.Errors), a.actual.Errors)
 	}
 }
 
 // Assert that the given task has the specified error.
 func (a TaskAssertions) HasError(errorString string) {
-	if a.actual.Errors == nil || len(a.actual.Errors) == 0 {
+	if len(a.actual.Errors) == 0 {
 		a.require.FailNow("expected task to have an error but no errors are on task")
 	}
 

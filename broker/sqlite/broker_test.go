@@ -9,14 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"go.rtnl.ai/radish/broker/sqlite"
-	. "go.rtnl.ai/radish/broker/sqlite"
 	"go.rtnl.ai/radish/broker/tests"
 	"go.rtnl.ai/x/dsn"
 )
 
 type SQLiteBrokerSuite struct {
 	tests.BrokerTestSuite
-	db *Broker
+	db *sqlite.Broker
 }
 
 func (s *SQLiteBrokerSuite) SetupTest() {
