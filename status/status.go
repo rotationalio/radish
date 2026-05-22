@@ -10,14 +10,14 @@ import (
 type Status uint8
 
 const (
-	StatusUnknown Status = iota
-	StatusPending
-	StatusRetry
-	StatusScheduled
-	StatusRunning
-	StatusSucceeded
-	StatusFailed
-	StatusCancelled
+	Unknown Status = iota
+	Pending
+	Retry
+	Scheduled
+	Running
+	Succeeded
+	Failed
+	Cancelled
 
 	// The terminator is used to determine the last value of the enum.
 	statusTerminator
@@ -39,7 +39,7 @@ func Parse(s any) (Status, error) {
 	case string:
 		s = strings.TrimSpace(strings.ToLower(v))
 		if s == "" {
-			return StatusUnknown, nil
+			return Unknown, nil
 		}
 
 		for i, name := range statusNames {
@@ -48,10 +48,10 @@ func Parse(s any) (Status, error) {
 			}
 		}
 
-		return StatusUnknown, fmt.Errorf("invalid status: %q", s)
+		return Unknown, fmt.Errorf("invalid status: %q", s)
 	case float64:
 		if v < 0 || v > float64(^uint8(0)) || v != float64(uint8(v)) {
-			return StatusUnknown, fmt.Errorf("cannot parse %v to Status", v)
+			return Unknown, fmt.Errorf("cannot parse %v to Status", v)
 		}
 		return Status(uint8(v)), nil
 	case uint8:
@@ -59,7 +59,7 @@ func Parse(s any) (Status, error) {
 	case Status:
 		return v, nil
 	default:
-		return StatusUnknown, fmt.Errorf("cannot parse %T to Status", s)
+		return Unknown, fmt.Errorf("cannot parse %T to Status", s)
 	}
 }
 

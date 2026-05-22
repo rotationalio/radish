@@ -39,6 +39,8 @@ func (s *AttemptErrors) Scan(src interface{}) (err error) {
 		buf := make([]byte, len(x))
 		copy(buf, x)
 		return json.Unmarshal(buf, s)
+	case string:
+		return json.Unmarshal([]byte(x), s)
 	default:
 		return fmt.Errorf("cannot scan %T into attempt errors", src)
 	}
