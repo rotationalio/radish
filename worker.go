@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"go.rtnl.ai/radish/internal/worker"
+	"go.rtnl.ai/radish/models"
 )
 
 //============================================================================
@@ -22,6 +23,10 @@ type Worker[T Task] interface {
 
 	// By implementing this interface, the worker is able to determine the timeout for the
 	// given task. If 0 is returned as the timeout, the default timeout policy is used.
+	// NOTE: this timeout is used for the task context and should be less than the
+	// configured task timeout, which will make the task available to another worker.
+	// If the timeout is greater than the configured task timeout, the configured task
+	// timeout will be used.
 	Timeout(*TaskInfo[T]) time.Duration
 
 	// Do performs the work for for the given task and returns an error if the task
@@ -156,6 +161,14 @@ func (w *Workers) add(task Task, factory worker.Factory) error {
 	}
 
 	return nil
+}
+
+func (w *Workers) Get(task *models.TaskMeta) (worker.Worker, error) {
+	worker, ok := w.workers[task.Kind]
+	if !ok {
+		return nil, fmt.Errorf("task %q is not registered", task.Kind)
+	}
+	return worker.factory.Make(task)
 }
 
 func (w *Workers) Has(kind string) bool {

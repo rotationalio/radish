@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.rtnl.ai/confire/contest"
 	"go.rtnl.ai/radish"
+	"go.rtnl.ai/radish/backoff"
 )
 
 // The values in the test environment variables should result a configuration that is
@@ -15,24 +16,34 @@ import (
 // added to this package, it should be added to this map and have a non-default value
 // for testing and validation purposes.
 var testEnv = contest.Env{
-	"DATABASE_URL":         "postgres://radish:radish@localhost:5432/radish?sslmode=disable",
-	"RADISH_NUM_WORKERS":   "32",
-	"RADISH_TASK_RETRIES":  "5",
-	"RADISH_TASK_TIMEOUT":  "120s",
-	"RADISH_POLL_INTERVAL": "20s",
-	"RADISH_POLL_JITTER":   "50ms",
-	"RADISH_RETENTION":     "48h",
+	"DATABASE_URL":          "postgres://radish:radish@localhost:5432/radish?sslmode=disable",
+	"RADISH_NUM_WORKERS":    "32",
+	"RADISH_TASK_RETRIES":   "5",
+	"RADISH_TASK_TIMEOUT":   "120s",
+	"RADISH_POLL_INTERVAL":  "20s",
+	"RADISH_POLL_JITTER":    "50ms",
+	"RADISH_RETENTION":      "48h",
+	"RADISH_BACKOFF_POLICY": "exponential",
+	"RADISH_BACKOFF_DELAY":  "8s",
+	"RADISH_BACKOFF_FACTOR": "1.25",
+	"RADISH_BACKOFF_JITTER": "true",
+	"RADISH_BACKOFF_SIGMA":  "32ms",
 }
 
 // Used for mock testing of the config.
 var mockEnv = contest.Env{
-	"RADISH_MANAGED_DB":    "true",
-	"RADISH_NUM_WORKERS":   "4",
-	"RADISH_TASK_RETRIES":  "2",
-	"RADISH_TASK_TIMEOUT":  "5s",
-	"RADISH_POLL_INTERVAL": "1s",
-	"RADISH_POLL_JITTER":   "5ms",
-	"RADISH_RETENTION":     "24h",
+	"RADISH_MANAGED_DB":     "true",
+	"RADISH_NUM_WORKERS":    "4",
+	"RADISH_TASK_RETRIES":   "2",
+	"RADISH_TASK_TIMEOUT":   "5s",
+	"RADISH_POLL_INTERVAL":  "1s",
+	"RADISH_POLL_JITTER":    "5ms",
+	"RADISH_RETENTION":      "24h",
+	"RADISH_BACKOFF_POLICY": "exponential",
+	"RADISH_BACKOFF_DELAY":  "8s",
+	"RADISH_BACKOFF_FACTOR": "1.25",
+	"RADISH_BACKOFF_JITTER": "true",
+	"RADISH_BACKOFF_SIGMA":  "32ms",
 }
 
 // This config should always pass validation and should match the testEnv.
@@ -45,7 +56,14 @@ var validConfig = radish.Config{
 	PollInterval: 20 * time.Second,
 	PollJitter:   50 * time.Millisecond,
 	Retention:    48 * time.Hour,
-	Conn:         nil,
+	Backoff: backoff.Config{
+		Policy: backoff.PolicyExponential,
+		Delay:  8 * time.Second,
+		Factor: 1.25,
+		Jitter: true,
+		Sigma:  32 * time.Millisecond,
+	},
+	Conn: nil,
 }
 
 func TestConfig(t *testing.T) {
