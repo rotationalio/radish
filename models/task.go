@@ -59,3 +59,16 @@ func (t *TaskMeta) Scan(s Scanner) error {
 		&t.Modified,
 	)
 }
+
+func (t *TaskMeta) AddError(err error, trace string) {
+	if t.Errors == nil {
+		t.Errors = make(AttemptErrors, 0, 1)
+	}
+
+	t.Errors = append(t.Errors, AttemptError{
+		Attempt:   int(t.Attempts),
+		Error:     err.Error(),
+		Trace:     trace,
+		Timestamp: time.Now(),
+	})
+}
