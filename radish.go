@@ -12,7 +12,6 @@ import (
 	"go.rtnl.ai/radish/broker"
 	dberr "go.rtnl.ai/radish/broker/errors"
 	"go.rtnl.ai/radish/broker/postgres"
-	"go.rtnl.ai/radish/internal/worker"
 	internal "go.rtnl.ai/radish/internal/worker"
 	"go.rtnl.ai/radish/jitter"
 	"go.rtnl.ai/radish/models"
@@ -239,7 +238,7 @@ func (e *executor) execute() (err error) {
 	taskLog := rlog.With("task", task.ID, "kind", task.Kind, "attempts", task.Attempts)
 
 	// Find a worker that can execute the task.
-	var worker worker.Worker
+	var worker internal.Worker
 	if worker, err = e.workers.Get(task); err != nil {
 		// If the task is not registered, log it
 		// NOTE: not a fatal error so no error is returned.
