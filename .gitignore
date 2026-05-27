@@ -17,7 +17,7 @@
 # Local environment variables and secrets
 .env
 .secret
-tmp
+tmp/
 
 # IDEs
 .vscode

@@ -99,7 +99,7 @@ func Check(𝛍 time.Duration, 𝛔 time.Duration) error {
 	}
 
 	// Capture 99.7% of the data (near total range)
-	if 𝛍-(3*time.Duration(𝛔)) <= 0 {
+	if 𝛍-(3*𝛔) <= 0 {
 		return ErrInvalidSigma
 	}
 
