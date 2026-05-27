@@ -15,4 +15,4 @@ export RADISH_BACKOFF_JITTER=true
 export RADISH_BACKOFF_SIGMA=1500ms
 
 # go run ../cmd/turnip/ -path simulators.json -log turnip.log
-go run ../cmd/turnip/ -radish-only
+go run ../cmd/turnip/ -radish-only -log turnip.log

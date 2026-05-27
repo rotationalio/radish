@@ -1,6 +1,6 @@
 # Radish
 
-[![GoDoc](https://godoc.org/github.com/rotationalio/radish?status.svg)](https://godoc.org/github.com/rotationalio/radish)
+[![GoDoc](https://godoc.org/go.rtnl.ai/radish?status.svg)](https://godoc.org/go.rtnl.ai/radish)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rotationalio/radish)](https://goreportcard.com/report/github.com/rotationalio/radish)
 [![CI Tests](https://github.com/rotationalio/radish/actions/workflows/tests.yaml/badge.svg)](https://github.com/rotationalio/radish/actions/workflows/tests.yaml)
 
