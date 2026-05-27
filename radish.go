@@ -203,8 +203,8 @@ func (e *executor) run(wg *sync.WaitGroup) {
 			case <-stop:
 				return
 			case <-poll.C:
-				if err := e.execute(); err != nil {
-					rlog.Error("fatal error while executing task", "error", err)
+				if err := e.dequeue(); err != nil {
+					rlog.Fatal("fatal error while executing task", "error", err)
 					return
 				}
 			}
@@ -221,23 +221,32 @@ func (e *executor) shutdown() {
 	close(e.stop)
 }
 
-func (e *executor) execute() (err error) {
+// Keep dequeuing tasks from the broker and executing them until there are no more
+// tasks to dequeue or an error occurs (errors are considered fatal).
+func (e *executor) dequeue() (err error) {
+	for {
+		var task *models.TaskMeta
+		if task, err = e.dequeueTask(); err != nil {
+			if errors.Is(err, dberr.ErrNotFound) {
+				return nil
+			}
+			return err
+		}
+
+		if err = e.execute(task); err != nil {
+			return err
+		}
+	}
+}
+
+func (e *executor) dequeueTask() (task *models.TaskMeta, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), e.conf.PollInterval)
 	defer cancel()
 
-	// Dequeue a task from the broker.
-	var task *models.TaskMeta
-	if task, err = e.broker.Dequeue(ctx, e.conf.TaskTimeout); err != nil {
-		// If there are no tasks available, continue polling.
-		if errors.Is(err, dberr.ErrNotFound) {
-			return nil
-		}
+	return e.broker.Dequeue(ctx, e.conf.TaskTimeout)
+}
 
-		// Otherwise this is a fatal error, log it and return.
-		rlog.Fatal("could not dequeue task", "error", err)
-		return err
-	}
-
+func (e *executor) execute(task *models.TaskMeta) (err error) {
 	// Create a logger with the task attributes for logging.
 	taskLog := rlog.With("task", task.ID, "kind", task.Kind, "attempts", task.Attempts)
 
@@ -247,21 +256,6 @@ func (e *executor) execute() (err error) {
 		// If the task is not registered, log it
 		// NOTE: not a fatal error so no error is returned.
 		taskLog.Error("dequeued unregistered task", "error", err)
-		return nil
-	}
-
-	// Unmarshal the task.
-	if err = worker.UnmarshalTask(); err != nil {
-		// If the task cannot be unmarshaled, log it and mark it as a failure.
-		taskLog.Error("could not unmarshal task", "error", err)
-
-		// Mark the task as failed.
-		task.AddError(err, "")
-		if err = e.broker.Fail(ctx, task.ID, task.Errors); err != nil {
-			// Inability to mark a task as failed is a fatal error.
-			taskLog.Fatal("could not mark task as failed", "error", err)
-			return err
-		}
 		return nil
 	}
 
@@ -276,6 +270,21 @@ func (e *executor) execute() (err error) {
 	taskLog.Debug("executing task", "timeout", timeout)
 	taskctx, taskcancel := context.WithTimeout(context.Background(), timeout)
 	defer taskcancel()
+
+	// Unmarshal the task.
+	if err = worker.UnmarshalTask(); err != nil {
+		// If the task cannot be unmarshaled, log it and mark it as a failure.
+		taskLog.Error("could not unmarshal task", "error", err)
+
+		// Mark the task as failed.
+		task.AddError(err, "")
+		if err = e.broker.Fail(taskctx, task.ID, task.Errors); err != nil {
+			// Inability to mark a task as failed is a fatal error.
+			taskLog.Fatal("could not mark task as failed", "error", err)
+			return err
+		}
+		return nil
+	}
 
 	// TODO: handle panics from the task.
 	if taskerr := worker.Do(taskctx); taskerr != nil {
@@ -297,7 +306,7 @@ func (e *executor) execute() (err error) {
 			}
 
 			// Update the broker with the retry information.
-			if err = e.broker.Retry(ctx, task.ID, task.Errors, delay); err != nil {
+			if err = e.broker.Retry(taskctx, task.ID, task.Errors, delay); err != nil {
 				// Inability to retry the task is a fatal error.
 				taskLog.Fatal("could not retry task", "error", err)
 				return err
@@ -307,7 +316,7 @@ func (e *executor) execute() (err error) {
 			return nil
 		} else {
 			// Mark the task as failed.
-			if err = e.broker.Fail(ctx, task.ID, task.Errors); err != nil {
+			if err = e.broker.Fail(taskctx, task.ID, task.Errors); err != nil {
 				// Inability to mark a task as failed is a fatal error.
 				taskLog.Fatal("could not mark task as failed", "error", err)
 				return err
@@ -323,7 +332,7 @@ func (e *executor) execute() (err error) {
 
 	} else {
 		// Mark the task as successful.
-		if err = e.broker.Success(ctx, task.ID); err != nil {
+		if err = e.broker.Success(taskctx, task.ID); err != nil {
 			// Inability to mark a task as successful is a fatal error.
 			taskLog.Fatal("could not mark task as successful", "error", err)
 			return err

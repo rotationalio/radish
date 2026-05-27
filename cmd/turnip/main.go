@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"go.rtnl.ai/radish"
+	"go.rtnl.ai/x/rlog"
 )
 
 var (
@@ -137,6 +138,7 @@ func logging() {
 		}
 		logger = slog.New(slog.NewJSONHandler(logFile, nil))
 	}
+	rlog.SetDefault(rlog.New(logger))
 }
 
 func loadSimulators() (err error) {
