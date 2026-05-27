@@ -69,6 +69,10 @@ func New(conf *Config) (_ *Radish, err error) {
 	}, nil
 }
 
+func (r *Radish) Register(worker Worker[Task]) error {
+	return AddWorkerSafe(r.workers, worker)
+}
+
 // Starts the radish executors each in their own goroutine with a copy of the config
 // and workers to execute tasks in parallel. Returns an error if radish is already running.
 func (r *Radish) Run() (err error) {
@@ -225,7 +229,7 @@ func (e *executor) execute() (err error) {
 	var task *models.TaskMeta
 	if task, err = e.broker.Dequeue(ctx, e.conf.TaskTimeout); err != nil {
 		// If there are no tasks available, continue polling.
-		if !errors.Is(err, dberr.ErrNotFound) {
+		if errors.Is(err, dberr.ErrNotFound) {
 			return nil
 		}
 
