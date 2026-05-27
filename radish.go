@@ -203,6 +203,7 @@ func (e *executor) run(wg *sync.WaitGroup) {
 			case <-stop:
 				return
 			case <-poll.C:
+				// TODO: don't deuque if the stop signal is received.
 				if err := e.dequeue(); err != nil {
 					rlog.Fatal("fatal error while executing task", "error", err)
 					return
