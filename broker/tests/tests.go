@@ -2,10 +2,12 @@ package tests
 
 import (
 	"context"
+	"math/rand/v2"
 	"time"
 
 	"github.com/stretchr/testify/suite"
 	"go.rtnl.ai/radish/broker"
+	"go.rtnl.ai/radish/broker/errors"
 	"go.rtnl.ai/radish/models"
 	"go.rtnl.ai/radish/status"
 )
@@ -30,6 +32,41 @@ func New(b broker.Broker) *BrokerTestSuite {
 	return &BrokerTestSuite{
 		Broker: b,
 	}
+}
+
+func (s *BrokerTestSuite) TestDequeueNotFound() {
+	ctx := context.Background()
+	require := s.Require()
+
+	// Dequeue a task from an empty database; should return ErrNotFound.
+	task, err := s.Broker.Dequeue(ctx, TTL)
+	require.ErrorIs(err, errors.ErrNotFound)
+	require.Nil(task)
+
+	// Enqueue several tasks and mark them as succeeded, failed, and cancelled.
+	for i := 0; i < 64; i++ {
+		id, err := s.Broker.Enqueue(ctx, testKind, []byte(testPayload))
+		require.NoError(err, "unable to enqueue task")
+		require.NotZero(id, "unable to enqueue task")
+
+		spin := rand.Float64()
+		switch {
+		case spin < 0.10:
+			err = s.Broker.Fail(ctx, id, models.AttemptErrors{{Attempt: 1, Error: "test", Timestamp: time.Now()}})
+			require.NoError(err, "unable to mark task as failed")
+		case spin < 0.20:
+			err = s.Broker.Cancel(ctx, id)
+			require.NoError(err, "unable to mark task as cancelled")
+		default:
+			err = s.Broker.Success(ctx, id)
+			require.NoError(err, "unable to mark task as succeeded")
+		}
+	}
+
+	// Dequeue a task; should return ErrNotFound.
+	task, err = s.Broker.Dequeue(ctx, TTL)
+	require.ErrorIs(err, errors.ErrNotFound)
+	require.Nil(task)
 }
 
 func (s *BrokerTestSuite) TestEnqueueDequeueSingleSuccessfulTask() {
