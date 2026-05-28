@@ -20,10 +20,10 @@ type AttemptError struct {
 	// Trace contains a stack trace from a job that panicked.
 	// In the case of a non-panic or error produced as a stuck task, this value will
 	// be an empty string
-	Trace string `json:"trace"`
+	Trace string `json:"trace,omitempty"`
 
 	// Timestamp that the error occurred
-	Timestamp time.Time `json:"timestamp"`
+	Timestamp time.Time `json:"timestamp,omitzero"`
 }
 
 //===========================================================================

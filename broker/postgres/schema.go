@@ -4,10 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log/slog"
 	"time"
-
-	"go.rtnl.ai/x/rlog"
 )
 
 const (
@@ -18,8 +15,6 @@ const (
 )
 
 const radishSchemaSQL = `
-BEGIN;
-
 -- Create the radish_status type if it does not exist.
 DO $$
 BEGIN
@@ -50,8 +45,6 @@ CREATE TABLE IF NOT EXISTS radish_tasks (
     created         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     modified        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-COMMIT;
 `
 
 func initializeSchema(ctx context.Context, conn *sql.DB) (err error) {
@@ -62,22 +55,30 @@ func initializeSchema(ctx context.Context, conn *sql.DB) (err error) {
 	}
 	defer cur.Close()
 
+	var tx *sql.Tx
+	if tx, err = conn.BeginTx(ctx, nil); err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	// Acquire the advisory lock.
-	if _, err = cur.ExecContext(ctx, acquireMigrationLockSQL, AdvisoryLockID); err != nil {
+	if _, err = tx.ExecContext(ctx, acquireMigrationLockSQL, AdvisoryLockID); err != nil {
 		return fmt.Errorf("could not acquire advisory lock: %w", err)
 	}
 
-	// Ensure the advisory lock is released.
-	defer func() {
-		if _, err := conn.ExecContext(ctx, releaseMigrationLockSQL, AdvisoryLockID); err != nil {
-			rlog.ErrorAttrs(ctx, "could not release advisory lock", slog.Any("err", err))
-		}
-	}()
-
 	// Execute the schema.
-	if _, err = cur.ExecContext(ctx, radishSchemaSQL); err != nil {
+	if _, err = tx.ExecContext(ctx, radishSchemaSQL); err != nil {
 		return fmt.Errorf("could not execute schema: %w", err)
 	}
 
+	// Release the advisory lock.
+	if _, err := tx.ExecContext(ctx, releaseMigrationLockSQL, AdvisoryLockID); err != nil {
+		return fmt.Errorf("could not release advisory lock: %w", err)
+	}
+
+	// Commit the transaction.
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("could not commit transaction: %w", err)
+	}
 	return nil
 }

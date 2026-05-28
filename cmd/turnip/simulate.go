@@ -37,8 +37,11 @@ func Simulate(ctx context.Context, opts Simulator) (err error) {
 
 			for i := 0; i < n; i++ {
 				task := &Basic{
+					Publisher: name,
 					Delay:     opts.DelayRange.Duration(),
 					ErrorProb: opts.ErrorProbability.Float64(),
+					PanicProb: opts.PanicProbability.Float64(),
+					FatalProb: opts.FatalProbability,
 				}
 
 				var id int64
@@ -72,9 +75,11 @@ type Simulator struct {
 	Sigma               Duration      `json:"sigma"`
 	TasksPerInterval    IntRange      `json:"tasks_per_interval"`
 	ErrorProbability    FloatRange    `json:"error_probability"`
+	PanicProbability    FloatRange    `json:"panic_probability"`
 	DelayRange          DurationRange `json:"delay_range"`
 	ScheduleProbability float64       `json:"schedule_probability"`
 	ScheduleRange       DurationRange `json:"schedule_range"`
+	FatalProbability    float64       `json:"fatal_probability"`
 	StopAfter           int           `json:"stop_after,omitempty"`
 	StopWhen            Duration      `json:"stop_when,omitempty"`
 	StartDelay          Duration      `json:"start_delay,omitempty"`
@@ -127,14 +132,22 @@ func (r *Simulator) Validate() error {
 	if r.ErrorProbability.Min > r.ErrorProbability.Max {
 		return errors.New("error probability min must be less than max")
 	}
+	if r.PanicProbability.Min > r.PanicProbability.Max {
+		return errors.New("panic probability min must be less than max")
+	}
 	if r.DelayRange.Min > r.DelayRange.Max {
 		return errors.New("delay range min must be less than max")
 	}
 	if r.ScheduleRange.Min > r.ScheduleRange.Max {
 		return errors.New("schedule range min must be less than max")
 	}
+
 	if r.ScheduleProbability < 0 || r.ScheduleProbability > 1 {
 		return errors.New("schedule probability must be between 0 and 1")
+	}
+
+	if r.FatalProbability < 0 || r.FatalProbability > 1 {
+		return errors.New("fatal probability must be between 0 and 1")
 	}
 
 	if r.StopAfter <= 0 && r.StopWhen <= 0 {

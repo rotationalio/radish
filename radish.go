@@ -18,11 +18,6 @@ import (
 	"go.rtnl.ai/x/rlog"
 )
 
-var (
-	ErrNoDatabase = errors.New("no database connection or configuration provided")
-	ErrRunning    = errors.New("radish cannot be modified while running")
-)
-
 type Radish struct {
 	mu        sync.RWMutex
 	wg        *sync.WaitGroup
@@ -203,7 +198,11 @@ func (e *executor) run(wg *sync.WaitGroup) {
 			case <-stop:
 				return
 			case <-poll.C:
-				if err := e.dequeue(); err != nil {
+				if err := e.dequeue(stop); err != nil {
+					if errors.Is(err, ErrStop) {
+						return
+					}
+
 					rlog.Fatal("fatal error while executing task", "error", err)
 					return
 				}
@@ -223,8 +222,16 @@ func (e *executor) shutdown() {
 
 // Keep dequeuing tasks from the broker and executing them until there are no more
 // tasks to dequeue or an error occurs (errors are considered fatal).
-func (e *executor) dequeue() (err error) {
+func (e *executor) dequeue(stop <-chan struct{}) (err error) {
 	for {
+		// Do not dequeue a task if the stop signal is received.
+		select {
+		case <-stop:
+			return ErrStop
+		default:
+		}
+
+		// Dequeue and execute the task.
 		var task *models.TaskMeta
 		if task, err = e.dequeueTask(); err != nil {
 			if errors.Is(err, dberr.ErrNotFound) {
@@ -286,10 +293,9 @@ func (e *executor) execute(task *models.TaskMeta) (err error) {
 		return nil
 	}
 
-	// TODO: handle panics from the task.
-	if taskerr := worker.Do(taskctx); taskerr != nil {
+	if taskerr := e.recoveringDo(worker, taskctx); taskerr != nil {
 		// Add the error to the task.
-		task.AddError(taskerr, "")
+		AddError(task, taskerr)
 
 		// If the task returns an error, check the retry policy and retry if necessary.
 		var retry *internal.Retry
@@ -345,6 +351,15 @@ func (e *executor) execute(task *models.TaskMeta) (err error) {
 		)
 		return nil
 	}
+}
+
+func (e *executor) recoveringDo(worker internal.Worker, ctx context.Context) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = Recover(r)
+		}
+	}()
+	return worker.Do(ctx)
 }
 
 // Returns the default retry policy for the task.
