@@ -20,7 +20,7 @@
       "max": "2000ms"
     },
     "schedule_probability": 0.0,
-    "stop_after": 1000,
+    "stop_after": 5000,
     "stop_when": "1h"
   },
   {
@@ -44,7 +44,7 @@
       "max": "2000ms"
     },
     "schedule_probability": 0.0,
-    "stop_after": 1000,
+    "stop_after": 5000,
     "stop_when": "1h"
   },
   {
@@ -72,7 +72,7 @@
       "min": "1m",
       "max": "10m"
     },
-    "stop_after": 1000,
+    "stop_after": 5000,
     "stop_when": "1h"
   }
 ]

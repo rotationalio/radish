@@ -56,8 +56,10 @@ func Default(ctx context.Context, task *radish.TaskInfo[*Basic]) error {
 	}
 	if rand.Float64() < task.Task.PanicProb {
 		if task.Task.FatalProb > 0 && rand.Float64() < task.Task.FatalProb {
+			rlog.SetFatalHook(func() {
+				os.Exit(9)
+			})
 			rlog.Fatal("task fatal error", "pub", task.Task.Publisher, "sub", name)
-			os.Exit(1)
 		}
 		panic(PossibleErrors[rand.IntN(len(PossibleErrors))])
 	}
