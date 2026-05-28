@@ -24,6 +24,7 @@ type Radish struct {
 	conf      Config
 	workers   *Workers
 	executors []*executor
+	vacuum    *vacuum
 	broker    broker.Broker
 }
 
@@ -109,6 +110,13 @@ func (r *Radish) Run() (err error) {
 		r.executors = append(r.executors, executor)
 		executor.run(r.wg)
 	}
+
+	// Start the vacuum background task.
+	if r.conf.Retention > 0 && r.conf.VacuumInterval > 0 {
+		r.wg.Add(1)
+		r.vacuum = &vacuum{conf: &r.conf, broker: r.broker}
+		r.vacuum.run(r.wg)
+	}
 	return nil
 }
 
@@ -118,6 +126,12 @@ func (r *Radish) Shutdown() {
 	defer r.mu.Unlock()
 	if !r.isRunning() {
 		return
+	}
+
+	// Signal the vacuum background task to stop.
+	if r.vacuum != nil {
+		r.vacuum.shutdown()
+		r.vacuum = nil
 	}
 
 	// Signal all executors to stop.
@@ -146,7 +160,7 @@ func (r *Radish) IsRunning() bool {
 }
 
 func (r *Radish) isRunning() bool {
-	return len(r.executors) > 0
+	return len(r.executors) > 0 || r.vacuum != nil
 }
 
 func (r *Radish) Enqueue(ctx context.Context, task Task) (id int64, err error) {
@@ -173,8 +187,8 @@ func (r *Radish) Cancel(ctx context.Context, id int64) (err error) {
 	return r.broker.Cancel(ctx, id)
 }
 
-func (r *Radish) Vacuum(ctx context.Context, retention time.Duration) (err error) {
-	return r.broker.Vacuum(ctx, retention)
+func (r *Radish) Vacuum(ctx context.Context) (err error) {
+	return r.broker.Vacuum(ctx, r.conf.Retention)
 }
 
 //============================================================================

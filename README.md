@@ -159,18 +159,19 @@ explicitly or loaded from the environment using
 
 ### Configuration fields
 
-| Field          | Env Var                  | Default  | Description                                                                                  |
-| -------------- | ------------------------ | -------- | -------------------------------------------------------------------------------------------- |
-| `DatabaseURL`  | `DATABASE_URL`           |          | DSN to the database (e.g. `postgres://...`, `sqlite3:///path/to/db.sqlite`).                 |
-| `ManagedDB`    | `RADISH_MANAGED_DB`      | `false`  | If true, supply your own `*sql.DB` via `Conn` instead of letting Radish connect.             |
-| `NumWorkers`   | `RADISH_NUM_WORKERS`     | `8`      | Number of executor goroutines polling for tasks.                                             |
-| `TaskRetries`  | `RADISH_TASK_RETRIES`    | `3`      | Maximum default retry attempts per task.                                                     |
-| `TaskTimeout`  | `RADISH_TASK_TIMEOUT`    | `60s`    | Hard timeout per task; if exceeded, the task is reclaimed and retried.                       |
-| `PollInterval` | `RADISH_POLL_INTERVAL`   | `5s`     | How often each executor polls for new work.                                                  |
-| `PollJitter`   | `RADISH_POLL_JITTER`     | `125ms`  | Standard deviation of jitter applied to the poll interval to avoid thundering herds.         |
-| `Retention`    | `RADISH_RETENTION`       | `24h`    | How long completed/failed tasks are retained when calling `Vacuum`.                          |
-| `Backoff`      | `RADISH_BACKOFF_*`       | (linear) | Backoff policy; see [Retries and Backoff](#retries-and-backoff).                             |
-| `Conn`         | (not env-loadable)       | `nil`    | An existing `*sql.DB` to use instead of opening a new one. Required when `ManagedDB=true`.   |
+| Field            | Env Var                  | Default  | Description                                                                                |
+|------------------|--------------------------|----------|--------------------------------------------------------------------------------------------|
+| `DatabaseURL`    | `DATABASE_URL`           |          | DSN to the database (e.g. `postgres://...`, `sqlite3:///path/to/db.sqlite`).               |
+| `ManagedDB`      | `RADISH_MANAGED_DB`      | `false`  | If true, supply your own `*sql.DB` via `Conn` instead of letting Radish connect.           |
+| `NumWorkers`     | `RADISH_NUM_WORKERS`     | `8`      | Number of executor goroutines polling for tasks.                                           |
+| `TaskRetries`    | `RADISH_TASK_RETRIES`    | `3`      | Maximum default retry attempts per task.                                                   |
+| `TaskTimeout`    | `RADISH_TASK_TIMEOUT`    | `60s`    | Hard timeout per task; if exceeded, the task is reclaimed and retried.                     |
+| `PollInterval`   | `RADISH_POLL_INTERVAL`   | `5s`     | How often each executor polls for new work.                                                |
+| `PollJitter`     | `RADISH_POLL_JITTER`     | `125ms`  | Standard deviation of jitter applied to the poll interval to avoid thundering herds.       |
+| `Retention`      | `RADISH_RETENTION`       | `24h`    | How long completed/failed tasks are retained when calling `Vacuum`.                        |
+| `VacuumInterval` | `RADISH_VACUUM_INTERVAL` | `3h`     | How often the `Vacuum` background task is executed to clean up the database.               |
+| `Backoff`        | `RADISH_BACKOFF_*`       | (linear) | Backoff policy; see [Retries and Backoff](#retries-and-backoff).                           |
+| `Conn`           | (not env-loadable)       | `nil`    | An existing `*sql.DB` to use instead of opening a new one. Required when `ManagedDB=true`. |
 
 ### Loading from the environment
 
