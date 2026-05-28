@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 
@@ -19,11 +20,12 @@ import (
 var (
 	wg         sync.WaitGroup
 	logger     *slog.Logger
-	logPath    string
-	logFile    *os.File
-	path       string
-	simulators []*Simulator
 	tasks      *radish.Radish
+	simulators []*Simulator
+	logFile    *os.File
+	logPath    string
+	path       string
+	name       string
 	radishOnly bool
 )
 
@@ -35,10 +37,16 @@ func main() {
 	flag.BoolVar(&radishOnly, "radish-only", false, "only run the radish instance, do not run the simulators")
 	flag.StringVar(&logPath, "log", "", "write logs to the specified file")
 	flag.StringVar(&path, "path", "", "json configuration for task simulator(s)")
+	flag.StringVar(&name, "name", "", "enter a unique name for the simulation (default is the host name)")
 
 	// Set the usage function and parse command line arguments.
 	flag.Usage = usage
 	flag.Parse()
+
+	if name == "" {
+		name, _ = os.Hostname()
+		name += "-" + strconv.Itoa(os.Getpid())
+	}
 
 	// Print the version and exit if the version flag is set.
 	if *versionFlag {
@@ -95,13 +103,13 @@ func main() {
 		cancel()
 	}()
 
-	logger.Info("starting simulations", "count", len(simulators))
+	logger.Info("starting simulations", "name", name, "count", len(simulators))
 	for _, simulator := range simulators {
 		wg.Add(1)
 		go func(ctx context.Context, simulator *Simulator) {
 			defer wg.Done()
 			if err := Simulate(ctx, *simulator); err != nil {
-				logger.Error("simulation error", "error", err)
+				logger.Error("simulation error", "name", name, "error", err)
 			}
 		}(ctx, simulator)
 	}
@@ -156,6 +164,7 @@ func loadSimulators() (err error) {
 }
 
 func shutdown() {
+	logger.Info("shutting down", "name", name)
 	if tasks != nil {
 		tasks.Shutdown()
 	}
@@ -165,4 +174,5 @@ func shutdown() {
 		logFile.Close()
 	}
 	logFile = nil
+	logger.Info("graceful shutdown complete", "name", name)
 }
