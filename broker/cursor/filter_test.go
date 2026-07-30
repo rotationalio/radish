@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 	. "go.rtnl.ai/radish/broker/cursor"
 	"go.rtnl.ai/radish/status"
@@ -13,6 +14,7 @@ import (
 
 func TestFilter(t *testing.T) {
 	ts := time.Date(2026, 7, 30, 8, 32, 14, 345923, time.UTC)
+	pqsa := pq.StringArray([]string{"bar", "foo", "test"})
 
 	tests := []struct {
 		name       string
@@ -26,7 +28,7 @@ func TestFilter(t *testing.T) {
 			filter:     Where().Kinds("test", "foo", "bar"),
 			dialect:    dsn.Postgres,
 			want:       " WHERE kind = ANY($1)",
-			wantParams: []any{[]string{"bar", "foo", "test"}},
+			wantParams: []any{&pqsa},
 		},
 		{
 			name:       "SQLite3/Kinds",
@@ -47,7 +49,7 @@ func TestFilter(t *testing.T) {
 			filter:     Where().Completed(),
 			dialect:    dsn.Postgres,
 			want:       " WHERE status = ANY($1)",
-			wantParams: []any{[]status.Status{status.Succeeded, status.Failed, status.Cancelled}},
+			wantParams: []any{pq.GenericArray{A: []status.Status{status.Succeeded, status.Failed, status.Cancelled}}},
 		},
 		{
 			name:       "SQLite3/Completed",
@@ -68,7 +70,7 @@ func TestFilter(t *testing.T) {
 			filter:     Where().Awaiting(),
 			dialect:    dsn.Postgres,
 			want:       " WHERE status = ANY($1)",
-			wantParams: []any{[]status.Status{status.Pending, status.Retry, status.Scheduled}},
+			wantParams: []any{pq.GenericArray{A: []status.Status{status.Pending, status.Retry, status.Scheduled}}},
 		},
 		{
 			name:       "SQLite3/Awaiting",
@@ -152,7 +154,7 @@ func TestFilter(t *testing.T) {
 			filter:     Where().Kinds("test", "foo", "bar").Completed(),
 			dialect:    dsn.Postgres,
 			want:       " WHERE kind = ANY($1) AND status = ANY($2)",
-			wantParams: []any{[]string{"bar", "foo", "test"}, []status.Status{status.Succeeded, status.Failed, status.Cancelled}},
+			wantParams: []any{&pqsa, pq.GenericArray{A: []status.Status{status.Succeeded, status.Failed, status.Cancelled}}},
 		},
 		{
 			name:       "SQLite3/KindsAndCompleted",
