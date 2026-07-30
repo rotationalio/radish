@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
 	"go.rtnl.ai/radish/status"
 	"go.rtnl.ai/x/dsn"
 )
@@ -50,7 +51,7 @@ func (f *Filter) Clause(dialect string) string {
 		switch dialect {
 		case dsn.Postgres:
 			fmt.Fprintf(&sb, "kind = ANY($%d)", len(f.params)+1)
-			f.params = append(f.params, f.kinds)
+			f.params = append(f.params, pq.Array(f.kinds))
 		case dsn.SQLite3:
 			placeholders := make([]string, 0, len(f.kinds))
 			for i, kind := range f.kinds {
@@ -78,7 +79,7 @@ func (f *Filter) Clause(dialect string) string {
 		switch dialect {
 		case dsn.Postgres:
 			fmt.Fprintf(&sb, "status = ANY($%d)", len(f.params)+1)
-			f.params = append(f.params, f.states)
+			f.params = append(f.params, pq.Array(f.states))
 		case dsn.SQLite3:
 			placeholders := make([]string, 0, len(f.states))
 			for i, state := range f.states {
