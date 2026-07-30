@@ -20,6 +20,7 @@ func (s *MockBrokerSuite) SetupTest() {
 	s.simple.Reset()
 
 	s.mock.OnClose = s.simple.Close
+	s.mock.OnList = s.simple.List
 	s.mock.OnInfo = s.simple.Info
 	s.mock.OnEnqueue = s.simple.Enqueue
 	s.mock.OnSchedule = s.simple.Schedule
@@ -42,4 +43,12 @@ func TestBroker(t *testing.T) {
 	}
 
 	suite.Run(t, s)
+}
+
+func (s *MockBrokerSuite) TestListEmpty() {
+	s.T().Skip("not implemented for mock")
+}
+
+func (s *MockBrokerSuite) TestList() {
+	s.T().Skip("not implemented for mock")
 }

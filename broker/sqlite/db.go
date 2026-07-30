@@ -37,6 +37,10 @@ func Connect(uri *dsn.DSN) (broker *Broker, err error) {
 		return nil, err
 	}
 
+	if err = broker.prepareStatements(); err != nil {
+		return nil, err
+	}
+
 	return broker, nil
 }
 
@@ -48,6 +52,9 @@ func (b *Broker) Close() error {
 	if b.db == nil {
 		return nil
 	}
+
+	// Close the prepared statements.
+	b.closeStatements()
 
 	err := b.db.Close()
 	b.db = nil
