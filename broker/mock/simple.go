@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"go.rtnl.ai/radish/broker/cursor"
 	"go.rtnl.ai/radish/broker/errors"
 	"go.rtnl.ai/radish/models"
 	"go.rtnl.ai/radish/status"
@@ -31,6 +32,17 @@ func (s *Simple) Close() error {
 
 	s.closed = true
 	return nil
+}
+
+func (s *Simple) List(ctx context.Context, filter *cursor.Filter) (tasks *cursor.Cursor, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return nil, errors.ErrNotConnected
+	}
+
+	return nil, nil
 }
 
 func (s *Simple) Info(ctx context.Context, id int64) (task *models.TaskMeta, err error) {

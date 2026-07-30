@@ -8,12 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"go.rtnl.ai/radish/broker/cursor"
 	"go.rtnl.ai/radish/models"
 	"go.rtnl.ai/x/dsn"
 )
 
 const (
 	Close    = "Close"
+	List     = "List"
 	Info     = "Info"
 	Enqueue  = "Enqueue"
 	Schedule = "Schedule"
@@ -33,6 +35,7 @@ func ErrNoMock(name string) error {
 
 type Broker struct {
 	OnClose    func() error
+	OnList     func(ctx context.Context, filter *cursor.Filter) (tasks *cursor.Cursor, err error)
 	OnInfo     func(ctx context.Context, id int64) (task *models.TaskMeta, err error)
 	OnEnqueue  func(ctx context.Context, kind string, payload []byte) (id int64, err error)
 	OnSchedule func(ctx context.Context, kind string, payload []byte, executeAfter time.Time) (id int64, err error)
@@ -54,6 +57,7 @@ func Connect(uri *dsn.DSN) (b *Broker, err error) {
 func (b *Broker) Reset() {
 	b.mu.Lock()
 	b.OnClose = nil
+	b.OnList = nil
 	b.OnInfo = nil
 	b.OnEnqueue = nil
 	b.OnSchedule = nil
@@ -75,6 +79,10 @@ func (b *Broker) ErrorOn(name string, err error) {
 	case Close:
 		b.OnClose = func() error {
 			return err
+		}
+	case List:
+		b.OnList = func(ctx context.Context, filter *cursor.Filter) (tasks *cursor.Cursor, err error) {
+			return nil, err
 		}
 	case Info:
 		b.OnInfo = func(ctx context.Context, id int64) (task *models.TaskMeta, err error) {
@@ -165,6 +173,14 @@ func (b *Broker) Close() error {
 		return b.OnClose()
 	}
 	return ErrNoMock(Close)
+}
+
+func (b *Broker) List(ctx context.Context, filter *cursor.Filter) (tasks *cursor.Cursor, err error) {
+	b.incr(List)
+	if b.OnList != nil {
+		return b.OnList(ctx, filter)
+	}
+	return nil, ErrNoMock(List)
 }
 
 func (b *Broker) Info(ctx context.Context, id int64) (task *models.TaskMeta, err error) {
