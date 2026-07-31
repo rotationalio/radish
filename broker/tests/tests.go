@@ -396,12 +396,10 @@ func (s *BrokerTestSuite) TestScheduleOnlyOne() {
 			{"macdonald", "mackenzie"},
 		}
 
-		tasks := make([]int64, 0, len(kinds))
 		for _, kind := range kinds {
 			id, err := s.Broker.Schedule(ctx, kind[0], []byte(testPayload), time.Now().Add(randDelay()), &options.Options{OnlyOne: true, Kinds: kind})
 			require.NoError(err, "unable to schedule task")
 			require.NotZero(id, "unable to schedule task")
-			tasks = append(tasks, id)
 		}
 
 		// Scheduling with the kind alias should return an error
@@ -410,6 +408,7 @@ func (s *BrokerTestSuite) TestScheduleOnlyOne() {
 			require.ErrorIs(err, errors.ErrHighlander)
 			require.Zero(id)
 		}
+
 	})
 }
 
