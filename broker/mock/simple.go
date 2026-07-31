@@ -8,6 +8,7 @@ import (
 
 	"go.rtnl.ai/radish/broker/cursor"
 	"go.rtnl.ai/radish/broker/errors"
+	"go.rtnl.ai/radish/broker/options"
 	"go.rtnl.ai/radish/models"
 	"go.rtnl.ai/radish/status"
 )
@@ -64,7 +65,7 @@ func (s *Simple) Info(ctx context.Context, id int64) (task *models.TaskMeta, err
 	return s.tasks[id-1], nil
 }
 
-func (s *Simple) Enqueue(ctx context.Context, kind string, payload []byte) (id int64, err error) {
+func (s *Simple) Enqueue(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -92,7 +93,7 @@ func (s *Simple) Enqueue(ctx context.Context, kind string, payload []byte) (id i
 	return id, nil
 }
 
-func (s *Simple) Schedule(ctx context.Context, kind string, payload []byte, executeAfter time.Time) (id int64, err error) {
+func (s *Simple) Schedule(ctx context.Context, kind string, payload []byte, executeAfter time.Time, opts *options.Options) (id int64, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

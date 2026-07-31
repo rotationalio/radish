@@ -9,6 +9,7 @@ import (
 
 	"go.rtnl.ai/radish/broker/cursor"
 	"go.rtnl.ai/radish/broker/errors"
+	"go.rtnl.ai/radish/broker/options"
 	"go.rtnl.ai/radish/models"
 	"go.rtnl.ai/radish/status"
 	"go.rtnl.ai/x/dsn"
@@ -93,7 +94,7 @@ INSERT INTO radish_tasks (kind, payload) VALUES (:kind, jsonb(:payload)) RETURNI
 `
 
 // Enqueue a task with the given kind and payload.
-func (b *Broker) Enqueue(ctx context.Context, kind string, payload []byte) (id int64, err error) {
+func (b *Broker) Enqueue(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error) {
 	row := b.enqueueSQL.QueryRowContext(ctx, sql.Named("kind", kind), sql.Named("payload", payload))
 	if err = row.Scan(&id); err != nil {
 		return 0, dbe(err)
@@ -112,7 +113,7 @@ INSERT INTO radish_tasks (kind, status, payload, visible_at)
 `
 
 // Schedule a task with the given kind and payload to be executed later.
-func (b *Broker) Schedule(ctx context.Context, kind string, payload []byte, executeAfter time.Time) (id int64, err error) {
+func (b *Broker) Schedule(ctx context.Context, kind string, payload []byte, executeAfter time.Time, opts *options.Options) (id int64, err error) {
 	row := b.scheduleSQL.QueryRowContext(ctx, sql.Named("kind", kind), sql.Named("payload", payload), sql.Named("visibleAt", executeAfter))
 	if err = row.Scan(&id); err != nil {
 		return 0, dbe(err)

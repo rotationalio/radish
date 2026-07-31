@@ -111,7 +111,7 @@ func (s *BrokerTestSuite) TestDequeueNotFound() {
 
 	// Enqueue several tasks and mark them as succeeded, failed, and cancelled.
 	for i := 0; i < 64; i++ {
-		id, err := s.Broker.Enqueue(ctx, testKind, []byte(testPayload))
+		id, err := s.Broker.Enqueue(ctx, testKind, []byte(testPayload), nil)
 		require.NoError(err, "unable to enqueue task")
 		require.NotZero(id, "unable to enqueue task")
 
@@ -141,7 +141,7 @@ func (s *BrokerTestSuite) TestEnqueueDequeueSingleSuccessfulTask() {
 	requireTask := RequireTaskFactory(require)
 
 	// Enqueue a task
-	id, err := s.Broker.Enqueue(ctx, testKind, []byte(testPayload))
+	id, err := s.Broker.Enqueue(ctx, testKind, []byte(testPayload), nil)
 	require.NoError(err, "unable to enqueue task")
 	require.NotZero(id, "unable to enqueue task")
 
@@ -185,7 +185,7 @@ func (s *BrokerTestSuite) TestScheduleDequeueSingleFailedTask() {
 	requireTask := RequireTaskFactory(require)
 
 	// Schedule a task
-	id, err := s.Broker.Enqueue(ctx, testKind, []byte(testPayload))
+	id, err := s.Broker.Enqueue(ctx, testKind, []byte(testPayload), nil)
 	require.NoError(err, "unable to schedule task")
 	require.NotZero(id, "unable to schedule task")
 
@@ -260,7 +260,7 @@ func (c *EnqueueConfig) Enqueue(ctx context.Context, b broker.Broker) (err error
 
 		if p > 0 {
 			var id int64
-			if id, err = b.Enqueue(ctx, c.Kind, []byte(testPayload)); err != nil {
+			if id, err = b.Enqueue(ctx, c.Kind, []byte(testPayload), nil); err != nil {
 				return err
 			}
 
@@ -270,7 +270,7 @@ func (c *EnqueueConfig) Enqueue(ctx context.Context, b broker.Broker) (err error
 
 		if r > 0 {
 			var id int64
-			if id, err = b.Enqueue(ctx, c.Kind, []byte(testPayload)); err != nil {
+			if id, err = b.Enqueue(ctx, c.Kind, []byte(testPayload), nil); err != nil {
 				return err
 			}
 
@@ -284,7 +284,7 @@ func (c *EnqueueConfig) Enqueue(ctx context.Context, b broker.Broker) (err error
 
 		if s > 0 {
 			var id int64
-			if id, err = b.Enqueue(ctx, c.Kind, []byte(testPayload)); err != nil {
+			if id, err = b.Enqueue(ctx, c.Kind, []byte(testPayload), nil); err != nil {
 				return err
 			}
 
@@ -298,7 +298,7 @@ func (c *EnqueueConfig) Enqueue(ctx context.Context, b broker.Broker) (err error
 
 		if f > 0 {
 			var id int64
-			if id, err = b.Enqueue(ctx, c.Kind, []byte(testPayload)); err != nil {
+			if id, err = b.Enqueue(ctx, c.Kind, []byte(testPayload), nil); err != nil {
 				return err
 			}
 
@@ -312,7 +312,7 @@ func (c *EnqueueConfig) Enqueue(ctx context.Context, b broker.Broker) (err error
 
 		if sc > 0 {
 			var id int64
-			if id, err = b.Schedule(ctx, c.Kind, []byte(testPayload), c.After.Add(randDelay())); err != nil {
+			if id, err = b.Schedule(ctx, c.Kind, []byte(testPayload), c.After.Add(randDelay()), nil); err != nil {
 				return err
 			}
 
@@ -322,7 +322,7 @@ func (c *EnqueueConfig) Enqueue(ctx context.Context, b broker.Broker) (err error
 
 		if ca > 0 {
 			var id int64
-			if id, err = b.Schedule(ctx, c.Kind, []byte(testPayload), c.After.Add(randDelay())); err != nil {
+			if id, err = b.Schedule(ctx, c.Kind, []byte(testPayload), c.After.Add(randDelay()), nil); err != nil {
 				return err
 			}
 
