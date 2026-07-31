@@ -9,6 +9,7 @@ import (
 	"go.rtnl.ai/radish/broker"
 	"go.rtnl.ai/radish/broker/cursor"
 	"go.rtnl.ai/radish/broker/errors"
+	"go.rtnl.ai/radish/broker/options"
 	"go.rtnl.ai/radish/models"
 	"go.rtnl.ai/radish/status"
 )
@@ -231,6 +232,248 @@ func (s *BrokerTestSuite) TestScheduleDequeueSingleFailedTask() {
 	task.NoVisibleAt()
 	task.HasLastAttempt()
 	task.HasFinished()
+}
+
+func (s *BrokerTestSuite) TestEnqueueOnlyOne() {
+	ctx := context.Background()
+	require := s.Require()
+
+	// Enqueue multiple tasks with different kinds with the OnlyOne option
+	s.Run("Kind", func() {
+		kinds := []string{"connor", "duncan", "kurgan", "heather", "kastagir"}
+		tasks := make([]int64, 0, len(kinds))
+		for _, kind := range kinds {
+			id, err := s.Broker.Enqueue(ctx, kind, []byte(testPayload), &options.Options{OnlyOne: true, Kinds: []string{kind}})
+			require.NoError(err, "unable to enqueue task")
+			require.NotZero(id, "unable to enqueue task")
+			tasks = append(tasks, id)
+		}
+
+		// Enqueueing a second time should error
+		for _, kind := range kinds {
+			id, err := s.Broker.Enqueue(ctx, kind, []byte(testPayload), &options.Options{OnlyOne: true, Kinds: []string{kind}})
+			require.ErrorIs(err, errors.ErrHighlander)
+			require.Zero(id)
+		}
+
+		// Cancel the task should allow enqueuing it again
+		for _, id := range tasks {
+			err := s.Broker.Cancel(ctx, id)
+			require.NoError(err, "unable to cancel task")
+		}
+
+		for _, kind := range kinds {
+			id, err := s.Broker.Enqueue(ctx, kind, []byte(testPayload), &options.Options{OnlyOne: true, Kinds: []string{kind}})
+			require.NoError(err, "unable to enqueue task")
+			require.NotZero(id, "unable to enqueue task")
+		}
+	})
+
+	// NOTE: databases are nto reset between subtests, so we need to use different
+	// aliases and kinds that will not conflict with other subtests.
+	s.Run("Aliases", func() {
+		kinds := [][]string{
+			{"macleod", "wyatt"},
+			{"sutherland", "stirling"},
+			{"macdonald", "mackenzie"},
+		}
+		for _, kind := range kinds {
+			id, err := s.Broker.Enqueue(ctx, kind[0], []byte(testPayload), &options.Options{OnlyOne: true, Kinds: kind})
+			require.NoError(err, "unable to enqueue task")
+			require.NotZero(id, "unable to enqueue task")
+		}
+
+		// Enqueueing with the alias a second time should error
+		for _, kind := range kinds {
+			id, err := s.Broker.Enqueue(ctx, kind[1], []byte(testPayload), &options.Options{OnlyOne: true, Kinds: kind})
+			require.ErrorIs(err, errors.ErrHighlander)
+			require.Zero(id)
+		}
+	})
+}
+
+func (s *BrokerTestSuite) TestEnqueueOnlyOneReplace() {
+	ctx := context.Background()
+	require := s.Require()
+
+	// Enqueue multiple tasks with different kinds with the OnlyOneReplace option
+	s.Run("Kind", func() {
+		kinds := []string{"connor", "duncan", "kurgan", "heather", "kastagir"}
+		tasks := make([]int64, 0, len(kinds))
+
+		for _, kind := range kinds {
+			id, err := s.Broker.Enqueue(ctx, kind, []byte(testPayload), &options.Options{OnlyOneReplace: true, Kinds: []string{kind}})
+			require.NoError(err, "unable to enqueue task")
+			require.NotZero(id, "unable to enqueue task")
+			tasks = append(tasks, id)
+		}
+
+		// Enqueueing with the same kind should replace the existing task
+		for _, kind := range kinds {
+			id, err := s.Broker.Enqueue(ctx, kind, []byte(testPayload), &options.Options{OnlyOneReplace: true, Kinds: []string{kind}})
+			require.NoError(err, "unable to enqueue task")
+			require.NotZero(id, "unable to enqueue task")
+		}
+
+		// The old tasks should be marked as cancelled
+		for _, id := range tasks {
+			task, err := s.Broker.Info(ctx, id)
+			require.NoError(err, "unable to get task info")
+			require.Equal(status.Cancelled, task.Status, "expected task to be marked as cancelled")
+		}
+	})
+
+	s.Run("Aliases", func() {
+		kinds := [][]string{
+			{"macleod", "wyatt"},
+			{"sutherland", "stirling"},
+			{"macdonald", "mackenzie"},
+		}
+		tasks := make([]int64, 0, len(kinds))
+		for _, kind := range kinds {
+			id, err := s.Broker.Enqueue(ctx, kind[0], []byte(testPayload), &options.Options{OnlyOneReplace: true, Kinds: kind})
+			require.NoError(err, "unable to enqueue task")
+			require.NotZero(id, "unable to enqueue task")
+			tasks = append(tasks, id)
+		}
+
+		// Enqueueing with the kind alias should replace the existing task
+		for _, kind := range kinds {
+			id, err := s.Broker.Enqueue(ctx, kind[1], []byte(testPayload), &options.Options{OnlyOneReplace: true, Kinds: kind})
+			require.NoError(err, "unable to enqueue task")
+			require.NotZero(id, "unable to enqueue task")
+		}
+
+		// The old tasks should be marked as cancelled
+		for _, id := range tasks {
+			task, err := s.Broker.Info(ctx, id)
+			require.NoError(err, "unable to get task info")
+			require.Equal(status.Cancelled, task.Status, "expected task to be marked as cancelled")
+		}
+	})
+}
+
+func (s *BrokerTestSuite) TestScheduleOnlyOne() {
+	ctx := context.Background()
+	require := s.Require()
+
+	// Schedule multiple tasks with different kinds with the OnlyOne option
+	s.Run("Kind", func() {
+		kinds := []string{"connor", "duncan", "kurgan", "heather", "kastagir"}
+		tasks := make([]int64, 0, len(kinds))
+
+		for _, kind := range kinds {
+			id, err := s.Broker.Schedule(ctx, kind, []byte(testPayload), time.Now().Add(randDelay()), &options.Options{OnlyOne: true, Kinds: []string{kind}})
+			require.NoError(err, "unable to schedule task")
+			require.NotZero(id, "unable to schedule task")
+			tasks = append(tasks, id)
+		}
+
+		// Scheduling a second time should error
+		for _, kind := range kinds {
+			id, err := s.Broker.Schedule(ctx, kind, []byte(testPayload), time.Now().Add(randDelay()), &options.Options{OnlyOne: true, Kinds: []string{kind}})
+			require.ErrorIs(err, errors.ErrHighlander)
+			require.Zero(id)
+		}
+
+		// Cancel the task should allow scheduling it again
+		for _, id := range tasks {
+			err := s.Broker.Cancel(ctx, id)
+			require.NoError(err, "unable to cancel task")
+		}
+
+		for _, kind := range kinds {
+			id, err := s.Broker.Schedule(ctx, kind, []byte(testPayload), time.Now().Add(randDelay()), &options.Options{OnlyOne: true, Kinds: []string{kind}})
+			require.NoError(err, "unable to schedule task")
+			require.NotZero(id, "unable to schedule task")
+		}
+	})
+
+	s.Run("Aliases", func() {
+		kinds := [][]string{
+			{"macleod", "wyatt"},
+			{"sutherland", "stirling"},
+			{"macdonald", "mackenzie"},
+		}
+
+		tasks := make([]int64, 0, len(kinds))
+		for _, kind := range kinds {
+			id, err := s.Broker.Schedule(ctx, kind[0], []byte(testPayload), time.Now().Add(randDelay()), &options.Options{OnlyOne: true, Kinds: kind})
+			require.NoError(err, "unable to schedule task")
+			require.NotZero(id, "unable to schedule task")
+			tasks = append(tasks, id)
+		}
+
+		// Scheduling with the kind alias should return an error
+		for _, kind := range kinds {
+			id, err := s.Broker.Schedule(ctx, kind[1], []byte(testPayload), time.Now().Add(randDelay()), &options.Options{OnlyOne: true, Kinds: kind})
+			require.ErrorIs(err, errors.ErrHighlander)
+			require.Zero(id)
+		}
+	})
+}
+
+func (s *BrokerTestSuite) TestScheduleOnlyOneReplace() {
+	ctx := context.Background()
+	require := s.Require()
+
+	// Schedule multiple tasks with different kinds with the OnlyOneReplace option
+	s.Run("Kind", func() {
+		kinds := []string{"connor", "duncan", "kurgan", "heather", "kastagir"}
+		tasks := make([]int64, 0, len(kinds))
+		for _, kind := range kinds {
+			id, err := s.Broker.Schedule(ctx, kind, []byte(testPayload), time.Now().Add(randDelay()), &options.Options{OnlyOneReplace: true, Kinds: []string{kind}})
+			require.NoError(err, "unable to schedule task")
+			require.NotZero(id, "unable to schedule task")
+			tasks = append(tasks, id)
+		}
+
+		// Scheduling with the same kind should replace the existing task
+		for _, kind := range kinds {
+			id, err := s.Broker.Schedule(ctx, kind, []byte(testPayload), time.Now().Add(randDelay()), &options.Options{OnlyOneReplace: true, Kinds: []string{kind}})
+			require.NoError(err, "unable to schedule task")
+			require.NotZero(id, "unable to schedule task")
+		}
+
+		// The old tasks should be marked as cancelled
+		for _, id := range tasks {
+			task, err := s.Broker.Info(ctx, id)
+			require.NoError(err, "unable to get task info")
+			require.Equal(status.Cancelled, task.Status, "expected task to be marked as cancelled")
+		}
+	})
+
+	s.Run("Aliases", func() {
+		kinds := [][]string{
+			{"macleod", "wyatt"},
+			{"sutherland", "stirling"},
+			{"macdonald", "mackenzie"},
+		}
+		tasks := make([]int64, 0, len(kinds))
+		for _, kind := range kinds {
+			id, err := s.Broker.Schedule(ctx, kind[0], []byte(testPayload), time.Now().Add(randDelay()), &options.Options{OnlyOneReplace: true, Kinds: kind})
+			require.NoError(err, "unable to schedule task")
+			require.NotZero(id, "unable to schedule task")
+			tasks = append(tasks, id)
+		}
+
+		for _, kind := range kinds {
+			id, err := s.Broker.Schedule(ctx, kind[0], []byte(testPayload), time.Now().Add(randDelay()), &options.Options{OnlyOneReplace: true, Kinds: kind})
+			require.NoError(err, "unable to schedule task")
+			require.NotZero(id, "unable to schedule task")
+
+			task, err := s.Broker.Info(ctx, id)
+			require.NoError(err, "unable to get task info")
+			require.Equal(status.Scheduled, task.Status, "expected task to be marked as scheduled, actual status is %s", task.Status)
+		}
+
+		// The old tasks should be marked as cancelled
+		for _, id := range tasks {
+			task, err := s.Broker.Info(ctx, id)
+			require.NoError(err, "unable to get task info")
+			require.Equal(status.Cancelled, task.Status, "expected task to be marked as cancelled")
+		}
+	})
 }
 
 type EnqueueConfig struct {

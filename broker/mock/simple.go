@@ -3,6 +3,7 @@ package mock
 import (
 	"context"
 	"database/sql"
+	"slices"
 	"sync"
 	"time"
 
@@ -77,6 +78,43 @@ func (s *Simple) Enqueue(ctx context.Context, kind string, payload []byte, opts 
 		s.tasks = make([]*models.TaskMeta, 0)
 	}
 
+	if opts != nil {
+		if opts.OnlyOne {
+			if len(opts.Kinds) == 0 {
+				return 0, errors.ErrKindsRequired
+			}
+
+			for _, task := range s.tasks {
+				if !(task.Status == status.Pending || task.Status == status.Running || task.Status == status.Scheduled || task.Status == status.Retry) {
+					continue
+				}
+
+				if slices.Contains(opts.Kinds, task.Kind) {
+					return 0, errors.ErrHighlander
+				}
+			}
+		}
+
+		if opts.OnlyOneReplace {
+			if len(opts.Kinds) == 0 {
+				return 0, errors.ErrKindsRequired
+			}
+
+			for i := range s.tasks {
+				if !(s.tasks[i].Status == status.Pending || s.tasks[i].Status == status.Running || s.tasks[i].Status == status.Scheduled || s.tasks[i].Status == status.Retry) {
+					continue
+				}
+
+				if slices.Contains(opts.Kinds, s.tasks[i].Kind) {
+					s.tasks[i].Status = status.Cancelled
+					s.tasks[i].VisibleAt = sql.NullTime{Valid: false}
+					s.tasks[i].Finished = sql.NullTime{Time: time.Now(), Valid: true}
+					s.tasks[i].Modified = time.Now()
+				}
+			}
+		}
+	}
+
 	id = int64(len(s.tasks) + 1)
 	task := &models.TaskMeta{
 		ID:       id,
@@ -103,6 +141,42 @@ func (s *Simple) Schedule(ctx context.Context, kind string, payload []byte, exec
 
 	if s.tasks == nil {
 		s.tasks = make([]*models.TaskMeta, 0)
+	}
+
+	if opts != nil {
+		if opts.OnlyOne {
+			if len(opts.Kinds) == 0 {
+				return 0, errors.ErrKindsRequired
+			}
+
+			for _, task := range s.tasks {
+				if !(task.Status == status.Pending || task.Status == status.Running || task.Status == status.Scheduled || task.Status == status.Retry) {
+					continue
+				}
+
+				if slices.Contains(opts.Kinds, task.Kind) {
+					return 0, errors.ErrHighlander
+				}
+			}
+		}
+		if opts.OnlyOneReplace {
+			if len(opts.Kinds) == 0 {
+				return 0, errors.ErrKindsRequired
+			}
+
+			for i := range s.tasks {
+				if !(s.tasks[i].Status == status.Pending || s.tasks[i].Status == status.Running || s.tasks[i].Status == status.Scheduled || s.tasks[i].Status == status.Retry) {
+					continue
+				}
+
+				if slices.Contains(opts.Kinds, s.tasks[i].Kind) {
+					s.tasks[i].Status = status.Cancelled
+					s.tasks[i].VisibleAt = sql.NullTime{Valid: false}
+					s.tasks[i].Finished = sql.NullTime{Time: time.Now(), Valid: true}
+					s.tasks[i].Modified = time.Now()
+				}
+			}
+		}
 	}
 
 	id = int64(len(s.tasks) + 1)

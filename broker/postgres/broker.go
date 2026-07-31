@@ -120,7 +120,7 @@ const countKindsSQL = `
 -- Count the number of tasks with the given kind or kind alias.
 SELECT COUNT(*) FROM radish_tasks
 	WHERE kind = ANY($1) AND
-	status = ANY(ARRAY['pending', 'running', 'scheduled', 'retry']);
+	status = ANY(ARRAY['pending', 'running', 'scheduled', 'retry']::radish_status[]);
 `
 
 func (b *Broker) enqueueOnlyOne(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error) {
@@ -164,7 +164,7 @@ SET status = 'cancelled',
     visible_at = NULL,
     finished = NOW(),
     modified = NOW()
-WHERE kind = ANY($1) AND status = ANY(ARRAY['pending', 'scheduled', 'retry']);
+WHERE kind = ANY($1) AND status = ANY(ARRAY['pending', 'scheduled', 'retry']::radish_status[]);
 `
 
 func (b *Broker) enqueueOnlyOneReplace(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error) {
@@ -291,7 +291,7 @@ WITH next_task AS (
     SELECT id FROM radish_tasks
     WHERE
         status = 'pending' OR
-        (status = ANY(ARRAY['running', 'scheduled', 'retry']) AND visible_at <= NOW())
+        (status = ANY(ARRAY['running', 'scheduled', 'retry']::radish_status[]) AND visible_at <= NOW())
     ORDER BY created ASC
     LIMIT 1
     FOR UPDATE SKIP LOCKED
@@ -328,7 +328,7 @@ SET status = 'cancelled',
     visible_at = NULL,
     finished = NOW(),
     modified = NOW()
-WHERE id = $1 AND status = ANY(ARRAY['pending', 'scheduled', 'retry']);
+WHERE id = $1 AND status = ANY(ARRAY['pending', 'scheduled', 'retry']::radish_status[]);
 `
 
 // Mark a task as cancelled with no additional errors.
@@ -411,7 +411,7 @@ const vacuumSQL = `
 -- Cleanup any completed tasks that are older than the retention period.
 -- Parameter: the retention period in seconds.
 DELETE FROM radish_tasks WHERE
-    status = ANY(ARRAY['succeeded', 'failed', 'cancelled']) AND
+    status = ANY(ARRAY['succeeded', 'failed', 'cancelled']::radish_status[]) AND
     finished < NOW() - make_interval(secs := $1);
 `
 

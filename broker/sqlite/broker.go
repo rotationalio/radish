@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -121,7 +122,7 @@ func (b *Broker) Enqueue(ctx context.Context, kind string, payload []byte, opts 
 const countKindsSQL = `
 SELECT COUNT(*) FROM radish_tasks
 	WHERE status IN ('pending', 'running', 'scheduled', 'retry') AND
-	kind IN
+	kind
 `
 
 func (b *Broker) enqueueOnlyOne(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error) {
@@ -131,7 +132,7 @@ func (b *Broker) enqueueOnlyOne(ctx context.Context, kind string, payload []byte
 
 	// Create the kind parameters for the query.
 	clause, params := opts.KindsSQLite3Params()
-	countQuery := countKindsSQL + clause
+	countQuery := strings.TrimSpace(countKindsSQL) + " " + clause
 
 	var tx *sql.Tx
 	if tx, err = b.BeginTx(ctx, &sql.TxOptions{ReadOnly: false}); err != nil {
@@ -149,7 +150,7 @@ func (b *Broker) enqueueOnlyOne(ctx context.Context, kind string, payload []byte
 	}
 
 	stmt := tx.StmtContext(ctx, b.enqueueSQL)
-	if err = stmt.QueryRow(kind, payload).Scan(&id); err != nil {
+	if err = stmt.QueryRow(sql.Named("kind", kind), sql.Named("payload", payload)).Scan(&id); err != nil {
 		return 0, dbe(err)
 	}
 
@@ -164,7 +165,7 @@ SET status = 'cancelled',
 	visible_at = NULL,
 	finished = datetime('now'),
 	modified = datetime('now')
-WHERE status in ('pending', 'scheduled', 'retry') AND kind IN
+WHERE status in ('pending', 'scheduled', 'retry') AND kind
 `
 
 func (b *Broker) enqueueOnlyOneReplace(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error) {
@@ -174,7 +175,7 @@ func (b *Broker) enqueueOnlyOneReplace(ctx context.Context, kind string, payload
 
 	// Create the kind parameters for the query.
 	clause, params := opts.KindsSQLite3Params()
-	cancelQuery := cancelKindsSQL + clause
+	cancelQuery := strings.TrimSpace(cancelKindsSQL) + " " + clause
 
 	var tx *sql.Tx
 	if tx, err = b.BeginTx(ctx, &sql.TxOptions{ReadOnly: false}); err != nil {
@@ -187,7 +188,7 @@ func (b *Broker) enqueueOnlyOneReplace(ctx context.Context, kind string, payload
 	}
 
 	stmt := tx.StmtContext(ctx, b.enqueueSQL)
-	if err = stmt.QueryRow(kind, payload).Scan(&id); err != nil {
+	if err = stmt.QueryRow(sql.Named("kind", kind), sql.Named("payload", payload)).Scan(&id); err != nil {
 		return 0, dbe(err)
 	}
 
@@ -229,7 +230,7 @@ func (b *Broker) scheduleOnlyOne(ctx context.Context, kind string, payload []byt
 
 	// Create the kind parameters for the query.
 	clause, params := opts.KindsSQLite3Params()
-	countQuery := countKindsSQL + clause
+	countQuery := strings.TrimSpace(countKindsSQL) + " " + clause
 
 	var tx *sql.Tx
 	if tx, err = b.BeginTx(ctx, &sql.TxOptions{ReadOnly: false}); err != nil {
@@ -247,7 +248,7 @@ func (b *Broker) scheduleOnlyOne(ctx context.Context, kind string, payload []byt
 	}
 
 	stmt := tx.StmtContext(ctx, b.scheduleSQL)
-	if err = stmt.QueryRow(kind, payload, executeAfter).Scan(&id); err != nil {
+	if err = stmt.QueryRow(sql.Named("kind", kind), sql.Named("payload", payload), sql.Named("visibleAt", executeAfter)).Scan(&id); err != nil {
 		return 0, dbe(err)
 	}
 
@@ -261,7 +262,7 @@ func (b *Broker) scheduleOnlyOneReplace(ctx context.Context, kind string, payloa
 
 	// Create the kind parameters for the query.
 	clause, params := opts.KindsSQLite3Params()
-	cancelQuery := cancelKindsSQL + clause
+	cancelQuery := strings.TrimSpace(cancelKindsSQL) + " " + clause
 
 	var tx *sql.Tx
 	if tx, err = b.BeginTx(ctx, &sql.TxOptions{ReadOnly: false}); err != nil {
@@ -274,7 +275,7 @@ func (b *Broker) scheduleOnlyOneReplace(ctx context.Context, kind string, payloa
 	}
 
 	stmt := tx.StmtContext(ctx, b.scheduleSQL)
-	if err = stmt.QueryRow(kind, payload, executeAfter).Scan(&id); err != nil {
+	if err = stmt.QueryRow(sql.Named("kind", kind), sql.Named("payload", payload), sql.Named("visibleAt", executeAfter)).Scan(&id); err != nil {
 		return 0, dbe(err)
 	}
 

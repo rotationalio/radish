@@ -15,7 +15,7 @@ type MockBrokerSuite struct {
 	simple *mock.Simple
 }
 
-func (s *MockBrokerSuite) SetupTest() {
+func (s *MockBrokerSuite) Reset() {
 	s.mock.Reset()
 	s.simple.Reset()
 
@@ -30,6 +30,14 @@ func (s *MockBrokerSuite) SetupTest() {
 	s.mock.OnRetry = s.simple.Retry
 	s.mock.OnSuccess = s.simple.Success
 	s.mock.OnVacuum = s.simple.Vacuum
+}
+
+func (s *MockBrokerSuite) SetupTest() {
+	s.Reset()
+}
+
+func (s *MockBrokerSuite) SetupSubTest() {
+	s.Reset()
 }
 
 func TestBroker(t *testing.T) {

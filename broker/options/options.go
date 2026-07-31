@@ -24,6 +24,10 @@ type Options struct {
 }
 
 func (o *Options) KindsSQLite3Params() (clause string, params []any) {
+	if len(o.Kinds) == 1 {
+		return "= :kind", []any{sql.Named("kind", o.Kinds[0])}
+	}
+
 	params = make([]any, 0, len(o.Kinds))
 	placeholders := make([]string, 0, len(o.Kinds))
 
@@ -33,6 +37,6 @@ func (o *Options) KindsSQLite3Params() (clause string, params []any) {
 		params = append(params, sql.Named(placeholder, kind))
 	}
 
-	clause = "(" + strings.Join(placeholders, ",") + ")"
+	clause = "IN (" + strings.Join(placeholders, ",") + ")"
 	return clause, params
 }
