@@ -177,6 +177,12 @@ func (r *Radish) Enqueue(ctx context.Context, task Task, opts ...Option) (id int
 		for _, opt := range opts {
 			opt(brokerOptions)
 		}
+
+		// Add the task kinds to the broker options
+		brokerOptions.Kinds = []string{task.Kind()}
+		if taskWithAliases, ok := task.(TaskWithAliases); ok {
+			brokerOptions.Kinds = append(brokerOptions.Kinds, taskWithAliases.KindAliases()...)
+		}
 	}
 
 	return r.broker.Enqueue(ctx, task.Kind(), data, brokerOptions)
@@ -193,6 +199,12 @@ func (r *Radish) Schedule(ctx context.Context, task Task, executeAfter time.Time
 		brokerOptions = &options.Options{}
 		for _, opt := range opts {
 			opt(brokerOptions)
+		}
+
+		// Add the task kinds to the broker options
+		brokerOptions.Kinds = []string{task.Kind()}
+		if taskWithAliases, ok := task.(TaskWithAliases); ok {
+			brokerOptions.Kinds = append(brokerOptions.Kinds, taskWithAliases.KindAliases()...)
 		}
 	}
 

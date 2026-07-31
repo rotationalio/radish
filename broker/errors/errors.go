@@ -16,6 +16,9 @@ var (
 	ErrReadOnly          = errors.New("database or transaction is read-only")
 	ErrNotConnected      = errors.New("database connection not established")
 	ErrTaskNotCancelable = errors.New("task cannot be cancelled")
+	ErrKindsRequired     = errors.New("invalid options: kinds array is required")
+	ErrHighlander        = errors.New("task of specified kind already enqueued")
+	ErrOnlyOne           = ErrHighlander
 )
 
 var (
