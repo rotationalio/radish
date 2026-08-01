@@ -85,7 +85,7 @@ func (s *Simple) Enqueue(ctx context.Context, kind string, payload []byte, opts 
 			}
 
 			for _, task := range s.tasks {
-				if !(task.Status == status.Pending || task.Status == status.Running || task.Status == status.Scheduled || task.Status == status.Retry) {
+				if task.Status != status.Pending && task.Status != status.Running && task.Status != status.Scheduled && task.Status != status.Retry {
 					continue
 				}
 
@@ -101,7 +101,7 @@ func (s *Simple) Enqueue(ctx context.Context, kind string, payload []byte, opts 
 			}
 
 			for i := range s.tasks {
-				if !(s.tasks[i].Status == status.Pending || s.tasks[i].Status == status.Running || s.tasks[i].Status == status.Scheduled || s.tasks[i].Status == status.Retry) {
+				if s.tasks[i].Status != status.Pending && s.tasks[i].Status != status.Running && s.tasks[i].Status != status.Scheduled && s.tasks[i].Status != status.Retry {
 					continue
 				}
 
@@ -150,7 +150,7 @@ func (s *Simple) Schedule(ctx context.Context, kind string, payload []byte, exec
 			}
 
 			for _, task := range s.tasks {
-				if !(task.Status == status.Pending || task.Status == status.Running || task.Status == status.Scheduled || task.Status == status.Retry) {
+				if task.Status != status.Pending && task.Status != status.Running && task.Status != status.Scheduled && task.Status != status.Retry {
 					continue
 				}
 
@@ -165,7 +165,7 @@ func (s *Simple) Schedule(ctx context.Context, kind string, payload []byte, exec
 			}
 
 			for i := range s.tasks {
-				if !(s.tasks[i].Status == status.Pending || s.tasks[i].Status == status.Running || s.tasks[i].Status == status.Scheduled || s.tasks[i].Status == status.Retry) {
+				if s.tasks[i].Status != status.Pending && s.tasks[i].Status != status.Running && s.tasks[i].Status != status.Scheduled && s.tasks[i].Status != status.Retry {
 					continue
 				}
 
@@ -379,4 +379,21 @@ func (s *Simple) Vacuum(ctx context.Context, retention time.Duration) (err error
 	}
 
 	return nil
+}
+
+func (s *Simple) QueueSize(ctx context.Context) (count int64, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return 0, errors.ErrNotConnected
+	}
+
+	for _, task := range s.tasks {
+		if task.Status == status.Pending || task.Status == status.Running || task.Status == status.Scheduled || task.Status == status.Retry {
+			count++
+		}
+	}
+
+	return count, nil
 }

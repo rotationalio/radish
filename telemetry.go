@@ -83,7 +83,14 @@ func (m *Metrics) RegisterQueueSizeCallback(f metric.Callback) error {
 	return err
 }
 
-func (r *Radish) QueueSize(ctx context.Context, observer metric.Observer) error {
+func (r *Radish) QueueSize(ctx context.Context, observer metric.Observer) (err error) {
+	var count int64
+	if count, err = r.broker.QueueSize(ctx); err != nil {
+		return err
+	}
+	observer.ObserveInt64(r.meter.queueSize, count, metric.WithAttributes(
+		attribute.String("messaging.system", messagingSystem),
+	))
 	return nil
 }
 

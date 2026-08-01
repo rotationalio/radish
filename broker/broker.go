@@ -27,6 +27,7 @@ type Broker interface {
 	Retry(ctx context.Context, id int64, errors models.AttemptErrors, delay time.Duration) (err error)
 	Success(ctx context.Context, id int64) (err error)
 	Vacuum(ctx context.Context, retention time.Duration) (err error)
+	QueueSize(ctx context.Context) (count int64, err error)
 }
 
 func Connect(databaseURL string) (b Broker, err error) {
