@@ -1,0 +1,10 @@
+# Defines the configuration version.
+# The only possible value is "2".
+version: "2"
+linters:
+  settings:
+    errcheck:
+      exclude-functions:
+        - (*database/sql.Tx).Rollback
+        - (*database/sql.Tx).Commit
+        - (*database/sql.Stmt).Close

@@ -28,7 +28,7 @@ func (s *PostgresBrokerSuite) SetupTest() {
 
 func (s *PostgresBrokerSuite) TearDownSuite() {
 	s.Reset()
-	s.db.Close()
+	_ = s.db.Close()
 }
 
 func TestPostgresBroker(t *testing.T) {
