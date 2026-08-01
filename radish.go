@@ -10,7 +10,9 @@ import (
 
 	"go.rtnl.ai/radish/backoff"
 	"go.rtnl.ai/radish/broker"
+	"go.rtnl.ai/radish/broker/cursor"
 	dberr "go.rtnl.ai/radish/broker/errors"
+	"go.rtnl.ai/radish/broker/options"
 	"go.rtnl.ai/radish/broker/postgres"
 	internal "go.rtnl.ai/radish/internal/worker"
 	"go.rtnl.ai/radish/jitter"
@@ -163,20 +165,57 @@ func (r *Radish) isRunning() bool {
 	return len(r.executors) > 0 || r.vacuum != nil
 }
 
-func (r *Radish) Enqueue(ctx context.Context, task Task) (id int64, err error) {
+func (r *Radish) Enqueue(ctx context.Context, task Task, opts ...Option) (id int64, err error) {
 	var data []byte
 	if data, err = json.Marshal(task); err != nil {
 		return 0, fmt.Errorf("could not marshal task json: %w", err)
 	}
-	return r.broker.Enqueue(ctx, task.Kind(), data)
+
+	var brokerOptions *options.Options
+	if len(opts) > 0 {
+		brokerOptions = &options.Options{}
+		for _, opt := range opts {
+			opt(brokerOptions)
+		}
+
+		// Add the task kinds to the broker options
+		brokerOptions.Kinds = []string{task.Kind()}
+		if taskWithAliases, ok := task.(TaskWithAliases); ok {
+			brokerOptions.Kinds = append(brokerOptions.Kinds, taskWithAliases.KindAliases()...)
+		}
+	}
+
+	return r.broker.Enqueue(ctx, task.Kind(), data, brokerOptions)
 }
 
-func (r *Radish) Schedule(ctx context.Context, task Task, executeAfter time.Time) (id int64, err error) {
+func (r *Radish) Schedule(ctx context.Context, task Task, executeAfter time.Time, opts ...Option) (id int64, err error) {
 	var data []byte
 	if data, err = json.Marshal(task); err != nil {
 		return 0, fmt.Errorf("could not marshal task json: %w", err)
 	}
-	return r.broker.Schedule(ctx, task.Kind(), data, executeAfter)
+
+	var brokerOptions *options.Options
+	if len(opts) > 0 {
+		brokerOptions = &options.Options{}
+		for _, opt := range opts {
+			opt(brokerOptions)
+		}
+
+		// Add the task kinds to the broker options
+		brokerOptions.Kinds = []string{task.Kind()}
+		if taskWithAliases, ok := task.(TaskWithAliases); ok {
+			brokerOptions.Kinds = append(brokerOptions.Kinds, taskWithAliases.KindAliases()...)
+		}
+	}
+
+	return r.broker.Schedule(ctx, task.Kind(), data, executeAfter, brokerOptions)
+}
+
+// List returns a cursor over the tasks in the broker matching the given filter.
+// Pass a nil filter to list all tasks. The caller must Close the returned cursor
+// to release the underlying database transaction.
+func (r *Radish) List(ctx context.Context, filter *cursor.Filter) (tasks *cursor.Cursor, err error) {
+	return r.broker.List(ctx, filter)
 }
 
 func (r *Radish) Info(ctx context.Context, id int64) (task *models.TaskMeta, err error) {

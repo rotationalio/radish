@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.rtnl.ai/radish/broker/cursor"
+	"go.rtnl.ai/radish/broker/options"
 	"go.rtnl.ai/radish/models"
 	"go.rtnl.ai/x/dsn"
 )
@@ -37,8 +38,8 @@ type Broker struct {
 	OnClose    func() error
 	OnList     func(ctx context.Context, filter *cursor.Filter) (tasks *cursor.Cursor, err error)
 	OnInfo     func(ctx context.Context, id int64) (task *models.TaskMeta, err error)
-	OnEnqueue  func(ctx context.Context, kind string, payload []byte) (id int64, err error)
-	OnSchedule func(ctx context.Context, kind string, payload []byte, executeAfter time.Time) (id int64, err error)
+	OnEnqueue  func(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error)
+	OnSchedule func(ctx context.Context, kind string, payload []byte, executeAfter time.Time, opts *options.Options) (id int64, err error)
 	OnDequeue  func(ctx context.Context, ttl time.Duration) (task *models.TaskMeta, err error)
 	OnCancel   func(ctx context.Context, id int64) (err error)
 	OnFail     func(ctx context.Context, id int64, errors models.AttemptErrors) (err error)
@@ -89,11 +90,11 @@ func (b *Broker) ErrorOn(name string, err error) {
 			return nil, err
 		}
 	case Enqueue:
-		b.OnEnqueue = func(ctx context.Context, kind string, payload []byte) (id int64, err error) {
+		b.OnEnqueue = func(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error) {
 			return 0, err
 		}
 	case Schedule:
-		b.OnSchedule = func(ctx context.Context, kind string, payload []byte, executeAfter time.Time) (id int64, err error) {
+		b.OnSchedule = func(ctx context.Context, kind string, payload []byte, executeAfter time.Time, opts *options.Options) (id int64, err error) {
 			return 0, err
 		}
 	case Dequeue:
@@ -191,18 +192,18 @@ func (b *Broker) Info(ctx context.Context, id int64) (task *models.TaskMeta, err
 	return nil, ErrNoMock(Info)
 }
 
-func (b *Broker) Enqueue(ctx context.Context, kind string, payload []byte) (id int64, err error) {
+func (b *Broker) Enqueue(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error) {
 	b.incr(Enqueue)
 	if b.OnEnqueue != nil {
-		return b.OnEnqueue(ctx, kind, payload)
+		return b.OnEnqueue(ctx, kind, payload, opts)
 	}
 	return 0, ErrNoMock(Enqueue)
 }
 
-func (b *Broker) Schedule(ctx context.Context, kind string, payload []byte, executeAfter time.Time) (id int64, err error) {
+func (b *Broker) Schedule(ctx context.Context, kind string, payload []byte, executeAfter time.Time, opts *options.Options) (id int64, err error) {
 	b.incr(Schedule)
 	if b.OnSchedule != nil {
-		return b.OnSchedule(ctx, kind, payload, executeAfter)
+		return b.OnSchedule(ctx, kind, payload, executeAfter, opts)
 	}
 	return 0, ErrNoMock(Schedule)
 }

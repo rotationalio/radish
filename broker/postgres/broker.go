@@ -7,8 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lib/pq"
 	"go.rtnl.ai/radish/broker/cursor"
 	"go.rtnl.ai/radish/broker/errors"
+	"go.rtnl.ai/radish/broker/options"
 	"go.rtnl.ai/radish/models"
 	"go.rtnl.ai/x/dsn"
 )
@@ -18,15 +20,18 @@ type Broker struct {
 	db *sql.DB
 
 	// Prepared statements
-	infoSQL     *sql.Stmt
-	enqueueSQL  *sql.Stmt
-	scheduleSQL *sql.Stmt
-	dequeueSQL  *sql.Stmt
-	cancelSQL   *sql.Stmt
-	failedSQL   *sql.Stmt
-	retrySQL    *sql.Stmt
-	successSQL  *sql.Stmt
-	vacuumSQL   *sql.Stmt
+	infoSQL        *sql.Stmt
+	countKindsSQL  *sql.Stmt
+	enqueueSQL     *sql.Stmt
+	scheduleSQL    *sql.Stmt
+	dequeueSQL     *sql.Stmt
+	cancelSQL      *sql.Stmt
+	cancelKindsSQL *sql.Stmt
+	failedSQL      *sql.Stmt
+	retrySQL       *sql.Stmt
+	successSQL     *sql.Stmt
+	vacuumSQL      *sql.Stmt
+	lockTableSQL   *sql.Stmt
 }
 
 const countSQL = `
@@ -94,17 +99,101 @@ INSERT INTO radish_tasks (kind, payload) VALUES ($1, $2) RETURNING id;
 `
 
 // Enqueue a task with the given kind and payload.
-func (b *Broker) Enqueue(ctx context.Context, kind string, payload []byte) (id int64, err error) {
-	row := b.enqueueSQL.QueryRowContext(ctx, kind, payload)
-	if err = row.Scan(&id); err != nil {
-		return 0, dbe(err)
+func (b *Broker) Enqueue(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error) {
+	if opts != nil {
+		switch {
+		case opts.OnlyOne:
+			return b.enqueueOnlyOne(ctx, kind, payload, opts)
+		case opts.OnlyOneReplace:
+			return b.enqueueOnlyOneReplace(ctx, kind, payload, opts)
+		}
 	}
 
-	if err = row.Err(); err != nil {
+	if err = b.enqueueSQL.QueryRowContext(ctx, kind, payload).Scan(&id); err != nil {
 		return 0, dbe(err)
 	}
 
 	return id, nil
+}
+
+const countKindsSQL = `
+-- Count the number of tasks with the given kind or kind alias.
+SELECT COUNT(*) FROM radish_tasks
+	WHERE kind = ANY($1) AND
+	status = ANY(ARRAY['pending', 'running', 'scheduled', 'retry']::radish_status[]);
+`
+
+func (b *Broker) enqueueOnlyOne(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error) {
+	if len(opts.Kinds) == 0 {
+		return 0, errors.ErrKindsRequired
+	}
+
+	var tx *sql.Tx
+	if tx, err = b.BeginTx(ctx, &sql.TxOptions{ReadOnly: false}); err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	var count int64
+	countStmt := tx.StmtContext(ctx, b.countKindsSQL)
+	if err = countStmt.QueryRow(pq.Array(opts.Kinds)).Scan(&count); err != nil {
+		return 0, dbe(err)
+	}
+
+	if count > 0 {
+		return 0, errors.ErrHighlander
+	}
+
+	stmt := tx.StmtContext(ctx, b.enqueueSQL)
+	if err = stmt.QueryRow(kind, payload).Scan(&id); err != nil {
+		return 0, dbe(err)
+	}
+
+	return id, tx.Commit()
+}
+
+const lockTableSQL = `
+-- Blocks inserts, updates, and deletes on the radish_tasks table but allows concurrent selects.
+LOCK TABLE radish_tasks IN EXCLUSIVE MODE;
+`
+
+const cancelKindsSQL = `
+-- Mark all tasks with the given kinds as cancelled with no additional errors.
+UPDATE radish_tasks
+SET status = 'cancelled',
+    visible_at = NULL,
+    finished = NOW(),
+    modified = NOW()
+WHERE kind = ANY($1) AND status = ANY(ARRAY['pending', 'scheduled', 'retry']::radish_status[]);
+`
+
+func (b *Broker) enqueueOnlyOneReplace(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error) {
+	if len(opts.Kinds) == 0 {
+		return 0, errors.ErrKindsRequired
+	}
+
+	var tx *sql.Tx
+	if tx, err = b.BeginTx(ctx, &sql.TxOptions{ReadOnly: false}); err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	lockStmt := tx.StmtContext(ctx, b.lockTableSQL)
+	if _, err = lockStmt.Exec(); err != nil {
+		return 0, dbe(err)
+	}
+
+	cancelStmt := tx.StmtContext(ctx, b.cancelKindsSQL)
+	if _, err = cancelStmt.Exec(pq.Array(opts.Kinds)); err != nil {
+		return 0, dbe(err)
+	}
+
+	stmt := tx.StmtContext(ctx, b.enqueueSQL)
+	if err = stmt.QueryRow(kind, payload).Scan(&id); err != nil {
+		return 0, dbe(err)
+	}
+
+	return id, tx.Commit()
 }
 
 const scheduleSQL = `
@@ -115,7 +204,16 @@ INSERT INTO radish_tasks (kind, status, payload, visible_at)
 `
 
 // Schedule a task with the given kind and payload to be executed later.
-func (b *Broker) Schedule(ctx context.Context, kind string, payload []byte, executeAfter time.Time) (id int64, err error) {
+func (b *Broker) Schedule(ctx context.Context, kind string, payload []byte, executeAfter time.Time, opts *options.Options) (id int64, err error) {
+	if opts != nil {
+		switch {
+		case opts.OnlyOne:
+			return b.scheduleOnlyOne(ctx, kind, payload, executeAfter, opts)
+		case opts.OnlyOneReplace:
+			return b.scheduleOnlyOneReplace(ctx, kind, payload, executeAfter, opts)
+		}
+	}
+
 	row := b.scheduleSQL.QueryRowContext(ctx, kind, payload, executeAfter)
 	if err = row.Scan(&id); err != nil {
 		return 0, dbe(err)
@@ -128,6 +226,64 @@ func (b *Broker) Schedule(ctx context.Context, kind string, payload []byte, exec
 	return id, nil
 }
 
+func (b *Broker) scheduleOnlyOne(ctx context.Context, kind string, payload []byte, executeAfter time.Time, opts *options.Options) (id int64, err error) {
+	if len(opts.Kinds) == 0 {
+		return 0, errors.ErrKindsRequired
+	}
+
+	var tx *sql.Tx
+	if tx, err = b.BeginTx(ctx, &sql.TxOptions{ReadOnly: false}); err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	var count int64
+	countStmt := tx.StmtContext(ctx, b.countKindsSQL)
+	if err = countStmt.QueryRow(pq.Array(opts.Kinds)).Scan(&count); err != nil {
+		return 0, dbe(err)
+	}
+
+	if count > 0 {
+		return 0, errors.ErrHighlander
+	}
+
+	stmt := tx.StmtContext(ctx, b.scheduleSQL)
+	if err = stmt.QueryRow(kind, payload, executeAfter).Scan(&id); err != nil {
+		return 0, dbe(err)
+	}
+
+	return id, tx.Commit()
+}
+
+func (b *Broker) scheduleOnlyOneReplace(ctx context.Context, kind string, payload []byte, executeAfter time.Time, opts *options.Options) (id int64, err error) {
+	if len(opts.Kinds) == 0 {
+		return 0, errors.ErrKindsRequired
+	}
+
+	var tx *sql.Tx
+	if tx, err = b.BeginTx(ctx, &sql.TxOptions{ReadOnly: false}); err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	lockStmt := tx.StmtContext(ctx, b.lockTableSQL)
+	if _, err = lockStmt.Exec(); err != nil {
+		return 0, dbe(err)
+	}
+
+	cancelStmt := tx.StmtContext(ctx, b.cancelKindsSQL)
+	if _, err = cancelStmt.Exec(pq.Array(opts.Kinds)); err != nil {
+		return 0, dbe(err)
+	}
+
+	stmt := tx.StmtContext(ctx, b.scheduleSQL)
+	if err = stmt.QueryRow(kind, payload, executeAfter).Scan(&id); err != nil {
+		return 0, dbe(err)
+	}
+
+	return id, tx.Commit()
+}
+
 const dequeueSQL = `
 -- Dequeue the next task from the queue, skipping over locked rows.
 -- Parameter: the visibility timeout for the task in seconds.
@@ -135,7 +291,7 @@ WITH next_task AS (
     SELECT id FROM radish_tasks
     WHERE
         status = 'pending' OR
-        (status in ('running', 'scheduled', 'retry') AND visible_at <= NOW())
+        (status = ANY(ARRAY['running', 'scheduled', 'retry']::radish_status[]) AND visible_at <= NOW())
     ORDER BY created ASC
     LIMIT 1
     FOR UPDATE SKIP LOCKED
@@ -166,13 +322,13 @@ func (b *Broker) Dequeue(ctx context.Context, ttl time.Duration) (task *models.T
 }
 
 const cancelSQL = `
--- Mark a task as cancelled with no additional errors.
+-- Mark all tasks with the given kind as cancelled with no additional errors.
 UPDATE radish_tasks
 SET status = 'cancelled',
     visible_at = NULL,
     finished = NOW(),
     modified = NOW()
-WHERE id = $1 AND status in ('pending', 'scheduled', 'retry');
+WHERE id = $1 AND status = ANY(ARRAY['pending', 'scheduled', 'retry']::radish_status[]);
 `
 
 // Mark a task as cancelled with no additional errors.
@@ -255,7 +411,7 @@ const vacuumSQL = `
 -- Cleanup any completed tasks that are older than the retention period.
 -- Parameter: the retention period in seconds.
 DELETE FROM radish_tasks WHERE
-    status IN ('succeeded', 'failed', 'cancelled') AND
+    status = ANY(ARRAY['succeeded', 'failed', 'cancelled']::radish_status[]) AND
     finished < NOW() - make_interval(secs := $1);
 `
 
@@ -274,6 +430,9 @@ func (b *Broker) prepareStatements() (err error) {
 	if b.enqueueSQL, err = b.db.Prepare(enqueueSQL); err != nil {
 		return fmt.Errorf("failed to prepare enqueue statement: %w", err)
 	}
+	if b.countKindsSQL, err = b.db.Prepare(countKindsSQL); err != nil {
+		return fmt.Errorf("failed to prepare count kinds statement: %w", err)
+	}
 	if b.scheduleSQL, err = b.db.Prepare(scheduleSQL); err != nil {
 		return fmt.Errorf("failed to prepare schedule statement: %w", err)
 	}
@@ -282,6 +441,9 @@ func (b *Broker) prepareStatements() (err error) {
 	}
 	if b.cancelSQL, err = b.db.Prepare(cancelSQL); err != nil {
 		return fmt.Errorf("failed to prepare cancel statement: %w", err)
+	}
+	if b.cancelKindsSQL, err = b.db.Prepare(cancelKindsSQL); err != nil {
+		return fmt.Errorf("failed to prepare cancel kinds statement: %w", err)
 	}
 	if b.failedSQL, err = b.db.Prepare(failedSQL); err != nil {
 		return fmt.Errorf("failed to prepare failed statement: %w", err)
@@ -295,6 +457,9 @@ func (b *Broker) prepareStatements() (err error) {
 	if b.vacuumSQL, err = b.db.Prepare(vacuumSQL); err != nil {
 		return fmt.Errorf("failed to prepare vacuum statement: %w", err)
 	}
+	if b.lockTableSQL, err = b.db.Prepare(lockTableSQL); err != nil {
+		return fmt.Errorf("failed to prepare lock table statement: %w", err)
+	}
 	return nil
 }
 
@@ -305,6 +470,9 @@ func (b *Broker) closeStatements() {
 	if b.enqueueSQL != nil {
 		b.enqueueSQL.Close()
 	}
+	if b.countKindsSQL != nil {
+		b.countKindsSQL.Close()
+	}
 	if b.scheduleSQL != nil {
 		b.scheduleSQL.Close()
 	}
@@ -313,6 +481,9 @@ func (b *Broker) closeStatements() {
 	}
 	if b.cancelSQL != nil {
 		b.cancelSQL.Close()
+	}
+	if b.cancelKindsSQL != nil {
+		b.cancelKindsSQL.Close()
 	}
 	if b.failedSQL != nil {
 		b.failedSQL.Close()
@@ -325,5 +496,8 @@ func (b *Broker) closeStatements() {
 	}
 	if b.vacuumSQL != nil {
 		b.vacuumSQL.Close()
+	}
+	if b.lockTableSQL != nil {
+		b.lockTableSQL.Close()
 	}
 }

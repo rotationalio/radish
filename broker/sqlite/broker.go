@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"go.rtnl.ai/radish/broker/cursor"
 	"go.rtnl.ai/radish/broker/errors"
+	"go.rtnl.ai/radish/broker/options"
 	"go.rtnl.ai/radish/models"
 	"go.rtnl.ai/radish/status"
 	"go.rtnl.ai/x/dsn"
@@ -93,7 +95,16 @@ INSERT INTO radish_tasks (kind, payload) VALUES (:kind, jsonb(:payload)) RETURNI
 `
 
 // Enqueue a task with the given kind and payload.
-func (b *Broker) Enqueue(ctx context.Context, kind string, payload []byte) (id int64, err error) {
+func (b *Broker) Enqueue(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error) {
+	if opts != nil {
+		switch {
+		case opts.OnlyOne:
+			return b.enqueueOnlyOne(ctx, kind, payload, opts)
+		case opts.OnlyOneReplace:
+			return b.enqueueOnlyOneReplace(ctx, kind, payload, opts)
+		}
+	}
+
 	row := b.enqueueSQL.QueryRowContext(ctx, sql.Named("kind", kind), sql.Named("payload", payload))
 	if err = row.Scan(&id); err != nil {
 		return 0, dbe(err)
@@ -106,13 +117,100 @@ func (b *Broker) Enqueue(ctx context.Context, kind string, payload []byte) (id i
 	return id, nil
 }
 
+// Because SQLite3 does not support arrays for parameters, this query has to be manually
+// constructed and cannot be used as a prepared statement.
+const countKindsSQL = `
+SELECT COUNT(*) FROM radish_tasks
+	WHERE status IN ('pending', 'running', 'scheduled', 'retry') AND
+	kind
+`
+
+func (b *Broker) enqueueOnlyOne(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error) {
+	if len(opts.Kinds) == 0 {
+		return 0, errors.ErrKindsRequired
+	}
+
+	// Create the kind parameters for the query.
+	clause, params := opts.KindsSQLite3Params()
+	countQuery := strings.TrimSpace(countKindsSQL) + " " + clause
+
+	var tx *sql.Tx
+	if tx, err = b.BeginTx(ctx, &sql.TxOptions{ReadOnly: false}); err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	var count int64
+	if err = tx.QueryRow(countQuery, params...).Scan(&count); err != nil {
+		return 0, dbe(err)
+	}
+
+	if count > 0 {
+		return 0, errors.ErrHighlander
+	}
+
+	stmt := tx.StmtContext(ctx, b.enqueueSQL)
+	if err = stmt.QueryRow(sql.Named("kind", kind), sql.Named("payload", payload)).Scan(&id); err != nil {
+		return 0, dbe(err)
+	}
+
+	return id, tx.Commit()
+}
+
+// Because SQLite3 does not support arrays for parameters, this query has to be manually
+// constructed and cannot be used as a prepared statement.
+const cancelKindsSQL = `
+UPDATE radish_tasks
+SET status = 'cancelled',
+	visible_at = NULL,
+	finished = datetime('now'),
+	modified = datetime('now')
+WHERE status in ('pending', 'scheduled', 'retry') AND kind
+`
+
+func (b *Broker) enqueueOnlyOneReplace(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error) {
+	if len(opts.Kinds) == 0 {
+		return 0, errors.ErrKindsRequired
+	}
+
+	// Create the kind parameters for the query.
+	clause, params := opts.KindsSQLite3Params()
+	cancelQuery := strings.TrimSpace(cancelKindsSQL) + " " + clause
+
+	var tx *sql.Tx
+	if tx, err = b.BeginTx(ctx, &sql.TxOptions{ReadOnly: false}); err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	if _, err = tx.Exec(cancelQuery, params...); err != nil {
+		return 0, dbe(err)
+	}
+
+	stmt := tx.StmtContext(ctx, b.enqueueSQL)
+	if err = stmt.QueryRow(sql.Named("kind", kind), sql.Named("payload", payload)).Scan(&id); err != nil {
+		return 0, dbe(err)
+	}
+
+	return id, tx.Commit()
+}
+
 const scheduleSQL = `
 INSERT INTO radish_tasks (kind, status, payload, visible_at)
 	VALUES (:kind, 'scheduled', jsonb(:payload), :visibleAt) RETURNING id;
 `
 
 // Schedule a task with the given kind and payload to be executed later.
-func (b *Broker) Schedule(ctx context.Context, kind string, payload []byte, executeAfter time.Time) (id int64, err error) {
+func (b *Broker) Schedule(ctx context.Context, kind string, payload []byte, executeAfter time.Time, opts *options.Options) (id int64, err error) {
+	if opts != nil {
+		switch {
+		case opts.OnlyOne:
+			return b.scheduleOnlyOne(ctx, kind, payload, executeAfter, opts)
+		case opts.OnlyOneReplace:
+			return b.scheduleOnlyOneReplace(ctx, kind, payload, executeAfter, opts)
+		}
+	}
+
 	row := b.scheduleSQL.QueryRowContext(ctx, sql.Named("kind", kind), sql.Named("payload", payload), sql.Named("visibleAt", executeAfter))
 	if err = row.Scan(&id); err != nil {
 		return 0, dbe(err)
@@ -123,6 +221,65 @@ func (b *Broker) Schedule(ctx context.Context, kind string, payload []byte, exec
 	}
 
 	return id, nil
+}
+
+func (b *Broker) scheduleOnlyOne(ctx context.Context, kind string, payload []byte, executeAfter time.Time, opts *options.Options) (id int64, err error) {
+	if len(opts.Kinds) == 0 {
+		return 0, errors.ErrKindsRequired
+	}
+
+	// Create the kind parameters for the query.
+	clause, params := opts.KindsSQLite3Params()
+	countQuery := strings.TrimSpace(countKindsSQL) + " " + clause
+
+	var tx *sql.Tx
+	if tx, err = b.BeginTx(ctx, &sql.TxOptions{ReadOnly: false}); err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	var count int64
+	if err = tx.QueryRow(countQuery, params...).Scan(&count); err != nil {
+		return 0, dbe(err)
+	}
+
+	if count > 0 {
+		return 0, errors.ErrHighlander
+	}
+
+	stmt := tx.StmtContext(ctx, b.scheduleSQL)
+	if err = stmt.QueryRow(sql.Named("kind", kind), sql.Named("payload", payload), sql.Named("visibleAt", executeAfter)).Scan(&id); err != nil {
+		return 0, dbe(err)
+	}
+
+	return id, tx.Commit()
+}
+
+func (b *Broker) scheduleOnlyOneReplace(ctx context.Context, kind string, payload []byte, executeAfter time.Time, opts *options.Options) (id int64, err error) {
+	if len(opts.Kinds) == 0 {
+		return 0, errors.ErrKindsRequired
+	}
+
+	// Create the kind parameters for the query.
+	clause, params := opts.KindsSQLite3Params()
+	cancelQuery := strings.TrimSpace(cancelKindsSQL) + " " + clause
+
+	var tx *sql.Tx
+	if tx, err = b.BeginTx(ctx, &sql.TxOptions{ReadOnly: false}); err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	if _, err = tx.Exec(cancelQuery, params...); err != nil {
+		return 0, dbe(err)
+	}
+
+	stmt := tx.StmtContext(ctx, b.scheduleSQL)
+	if err = stmt.QueryRow(sql.Named("kind", kind), sql.Named("payload", payload), sql.Named("visibleAt", executeAfter)).Scan(&id); err != nil {
+		return 0, dbe(err)
+	}
+
+	return id, tx.Commit()
 }
 
 const dequeueSelectSQL = `

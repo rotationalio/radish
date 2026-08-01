@@ -18,9 +18,13 @@ type SQLiteBrokerSuite struct {
 	db *sqlite.Broker
 }
 
-func (s *SQLiteBrokerSuite) SetupTest() {
+func (s *SQLiteBrokerSuite) Reset() {
 	_, err := s.db.Exec(context.Background(), "DELETE FROM radish_tasks")
 	require.NoError(s.T(), err, "could not clean up test database before test")
+}
+
+func (s *SQLiteBrokerSuite) SetupTest() {
+	s.Reset()
 }
 
 func (s *SQLiteBrokerSuite) TearDownSuite() {

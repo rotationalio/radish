@@ -8,6 +8,7 @@ import (
 
 	"go.rtnl.ai/radish/broker/cursor"
 	"go.rtnl.ai/radish/broker/mock"
+	"go.rtnl.ai/radish/broker/options"
 	"go.rtnl.ai/radish/broker/postgres"
 	"go.rtnl.ai/radish/broker/sqlite"
 	"go.rtnl.ai/radish/models"
@@ -18,8 +19,8 @@ type Broker interface {
 	io.Closer
 	List(ctx context.Context, filter *cursor.Filter) (tasks *cursor.Cursor, err error)
 	Info(ctx context.Context, id int64) (task *models.TaskMeta, err error)
-	Enqueue(ctx context.Context, kind string, payload []byte) (id int64, err error)
-	Schedule(ctx context.Context, kind string, payload []byte, executeAfter time.Time) (id int64, err error)
+	Enqueue(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error)
+	Schedule(ctx context.Context, kind string, payload []byte, executeAfter time.Time, opts *options.Options) (id int64, err error)
 	Dequeue(ctx context.Context, ttl time.Duration) (task *models.TaskMeta, err error)
 	Cancel(ctx context.Context, id int64) (err error)
 	Fail(ctx context.Context, id int64, errors models.AttemptErrors) (err error)

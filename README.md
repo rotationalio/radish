@@ -1,7 +1,6 @@
 # Radish
 
 [![GoDoc](https://godoc.org/go.rtnl.ai/radish?status.svg)](https://godoc.org/go.rtnl.ai/radish)
-[![Go Report Card](https://goreportcard.com/badge/github.com/rotationalio/radish)](https://goreportcard.com/report/github.com/rotationalio/radish)
 [![CI Tests](https://github.com/rotationalio/radish/actions/workflows/tests.yaml/badge.svg)](https://github.com/rotationalio/radish/actions/workflows/tests.yaml)
 
 Radish is a lightweight, type-safe, persistent background task queue for Go. Tasks
@@ -430,6 +429,12 @@ Useful methods to know:
 - `tasks.Shutdown()` - signals all executors to stop, waits for in-flight
   tasks to finish (subject to their timeouts), and closes the broker.
 - `tasks.IsRunning()` - reports whether the executor pool is active.
+- `tasks.Enqueue(ctx, task, opts...)` / `tasks.Schedule(ctx, task, at, opts...)` -
+  add work to the queue (see [Enqueueing and Scheduling Tasks](#enqueueing-and-scheduling-tasks)).
+- `tasks.List(ctx, filter)` - query tasks in the broker (see
+  [Listing tasks](#enqueueing-and-scheduling-tasks)).
+- `tasks.Info(ctx, id)`, `tasks.Cancel(ctx, id)`, `tasks.Vacuum(ctx)` - inspect,
+  cancel, and clean up tasks.
 
 `Shutdown` is **graceful**: it waits for in-flight tasks to either complete or
 hit their timeout before returning. Tasks still in the queue remain there and
@@ -450,6 +455,60 @@ id, err := tasks.Schedule(ctx, &ReportTask{Date: today}, time.Now().Add(1*time.H
 Both methods return the broker-assigned `int64` task id, which can be used to
 inspect or cancel the task later.
 
+### Enqueue and Schedule options
+
+Both `Enqueue` and `Schedule` accept a variadic list of `radish.Option` values
+that control how the broker treats the task relative to other tasks of the same
+kind. Options are applied in order and passed through to the broker.
+
+```go
+// Enqueue only if no other task of this kind is already outstanding.
+id, err := tasks.Enqueue(ctx, &SyncTask{}, radish.OnlyOne())
+
+// Schedule, replacing any outstanding task of this kind.
+id, err := tasks.Schedule(ctx, &SyncTask{}, runAt, radish.OnlyOneReplace())
+```
+
+Both options deduplicate on the task `Kind()` (and any `KindAliases()`), so they
+are useful for idempotent or coalescing work - for example, "sync this account
+at most once at a time" or "keep only the latest scheduled report". If neither
+option is supplied, duplicate tasks of the same kind are always allowed.
+
+#### `OnlyOne()`
+
+Ensures that at most one task of a given kind exists at a time. When enqueuing or
+scheduling with `OnlyOne()`, if there is already a task of the same kind (or kind
+alias) that is `pending`, `scheduled`, `running`, or in `retry`, the new task is
+**not** created and an error is returned. Use this when a duplicate should be
+rejected and the existing task left untouched.
+
+```go
+if _, err := tasks.Enqueue(ctx, &SyncTask{AccountID: id}, radish.OnlyOne()); err != nil {
+    // An outstanding SyncTask already exists; nothing was enqueued.
+}
+```
+
+#### `OnlyOneReplace()`
+
+Also ensures a single task of a given kind, but instead of rejecting the new
+task it **replaces** the outstanding one. When enqueuing or scheduling with
+`OnlyOneReplace()`, any existing `pending` or `scheduled` task of the same kind
+(or kind alias) is cancelled and superseded by the new task, which is then
+created normally. Use this when the newest request should win - for example,
+re-scheduling a report so only the most recent parameters take effect.
+
+> **Note:** `OnlyOneReplace()` does **not** cancel a task that is currently
+> `running`, because an in-progress task cannot be cancelled mid-flight. This
+> creates an edge case where two tasks of the same kind can briefly coexist: if
+> the running task fails and is moved to `retry`, both the retry task and the new
+> replacement task will exist. To avoid this, pair `OnlyOneReplace()` with a
+> retry policy of a single attempt (no retries) for that task's worker.
+
+`OnlyOne()` and `OnlyOneReplace()` are mutually exclusive in intent - choose the
+one that matches whether an existing task should block the new one (`OnlyOne`) or
+be superseded by it (`OnlyOneReplace`). If both are supplied, then the `OnlyOne`
+semantics take precedence.
+
 ### Inspecting tasks
 
 ```go
@@ -459,6 +518,88 @@ fmt.Println(meta.Status, meta.Attempts, meta.Errors)
 
 `meta` is a `*models.TaskMeta` containing the kind, status, payload, attempt
 count, accumulated errors, and timestamps.
+
+### Listing tasks
+
+`List` queries the broker for many tasks at once, optionally narrowed by a
+filter. It returns a `*cursor.Cursor` that streams results from the database
+rather than materializing them all in memory:
+
+```go
+import "go.rtnl.ai/radish/broker/cursor"
+
+// List every task (nil filter matches all).
+c, err := tasks.List(ctx, nil)
+if err != nil { /* ... */ }
+defer c.Close() // MUST close to release the underlying transaction.
+
+fmt.Println("total:", c.Count())
+for c.Next() {
+    task, err := c.Task()
+    if err != nil { /* ... */ }
+    fmt.Println(task.ID, task.Kind, task.Status)
+}
+if err := c.Err(); err != nil { /* ... */ }
+```
+
+> **Important:** always `Close()` the cursor when you are done with it. The
+> cursor holds an open read-only transaction until closed. `defer c.Close()`
+> immediately after a successful `List` is the safest pattern.
+
+The `*cursor.Cursor` offers a few ways to consume results:
+
+- `Count()` - the total number of tasks matched by the filter (available before
+  iterating).
+- `Next()` / `Task()` - stream one task at a time (memory-efficient for large
+  result sets).
+- `List()` - materialize all matched tasks into a `[]*models.TaskMeta` slice at
+  once (convenient for small result sets):
+
+```go
+c, err := tasks.List(ctx, cursor.Where().Kinds("send-email").Awaiting())
+if err != nil { /* ... */ }
+defer c.Close()
+
+all, err := c.List()
+if err != nil { /* ... */ }
+fmt.Printf("%d send-email tasks awaiting execution\n", len(all))
+```
+
+#### Filtering
+
+Build a filter with `cursor.Where()` and chain conditions. Each condition
+returns the filter, so calls compose fluently. Conditions are combined with
+logical `AND`.
+
+| Method                       | Effect                                                                        |
+|------------------------------|-------------------------------------------------------------------------------|
+| `Kinds(kinds ...any)`        | Match only the given kinds. Accepts kind strings, or `Task` values (which contribute their `Kind()` **and** any `KindAliases()`). Unknown types are ignored. |
+| `States(states ...status.Status)` | Match only the given task statuses.                                       |
+| `Completed()`                | Shorthand for `States(succeeded, failed, cancelled)` (terminal tasks).         |
+| `Awaiting()`                 | Shorthand for `States(pending, retry, scheduled)` (tasks not yet finished).    |
+| `Before(t time.Time)`        | Match tasks whose `visible_at` is before `t`.                                  |
+| `After(t time.Time)`         | Match tasks whose `visible_at` is at or after `t`.                             |
+
+> **Note:** `Before` and `After` filter on the `visible_at` column (when a task
+> becomes eligible to run), not on `created`.
+
+```go
+// Pending or scheduled "report" tasks that should have run by now.
+filter := cursor.Where().
+    Kinds("report").
+    States(status.Pending, status.Scheduled).
+    Before(time.Now())
+
+c, err := tasks.List(ctx, filter)
+```
+
+Because `Kinds` accepts `Task` values, you can filter by a task type and pick up
+all of its aliases automatically:
+
+```go
+// Matches "sort", "sort-numbers", and "sort-integers" from the aliases example.
+c, err := tasks.List(ctx, cursor.Where().Kinds(&SortTask{}))
+```
 
 ### Cancelling tasks
 

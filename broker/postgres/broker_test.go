@@ -17,9 +17,13 @@ type PostgresBrokerSuite struct {
 	db *postgres.Broker
 }
 
-func (s *PostgresBrokerSuite) SetupTest() {
+func (s *PostgresBrokerSuite) Reset() {
 	_, err := s.db.Exec(context.Background(), "TRUNCATE TABLE radish_tasks RESTART IDENTITY")
 	require.NoError(s.T(), err, "could not clean up test database before test")
+}
+
+func (s *PostgresBrokerSuite) SetupTest() {
+	s.Reset()
 }
 
 func (s *PostgresBrokerSuite) TearDownSuite() {
