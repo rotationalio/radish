@@ -43,7 +43,7 @@ func (s *BrokerTestSuite) TestListEmpty() {
 
 	tasks, err := s.Broker.List(ctx, nil)
 	require.NoError(err, "unable to list tasks")
-	defer tasks.Close()
+	defer tasks.Close() //nolint:errcheck
 
 	require.Zero(tasks.Count(), "expected 0 tasks but got %d", tasks.Count())
 
@@ -87,7 +87,7 @@ func (s *BrokerTestSuite) TestList() {
 	s.Run("All", func() {
 		tasks, err := s.Broker.List(ctx, nil)
 		require.NoError(err, "unable to list tasks")
-		defer tasks.Close()
+		defer tasks.Close() //nolint:errcheck
 
 		require.Equal(total, tasks.Count(), "expected %d tasks but got %d", total, tasks.Count())
 	})
@@ -95,7 +95,7 @@ func (s *BrokerTestSuite) TestList() {
 	s.Run("Filtered", func() {
 		tasks, err := s.Broker.List(ctx, cursor.Where().Kinds("test").States(status.Pending))
 		require.NoError(err, "unable to list tasks")
-		defer tasks.Close()
+		defer tasks.Close() //nolint:errcheck
 
 		require.Equal(int64(16), tasks.Count(), "expected %d tasks but got %d", 16, tasks.Count())
 	})

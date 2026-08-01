@@ -53,7 +53,7 @@ func initializeSchema(ctx context.Context, conn *sql.DB) (err error) {
 	if cur, err = conn.Conn(ctx); err != nil {
 		return err
 	}
-	defer cur.Close()
+	defer cur.Close() //nolint:errcheck
 
 	var tx *sql.Tx
 	if tx, err = conn.BeginTx(ctx, nil); err != nil {

@@ -29,7 +29,7 @@ func (s *SQLiteBrokerSuite) SetupTest() {
 
 func (s *SQLiteBrokerSuite) TearDownSuite() {
 	s.Reset()
-	s.db.Close()
+	_ = s.db.Close()
 }
 
 func TestSQLiteBroker(t *testing.T) {
