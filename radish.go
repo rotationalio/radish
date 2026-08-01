@@ -423,8 +423,7 @@ func (e *executor) dequeueTask(ctx context.Context) (task *models.TaskMeta, err 
 	ctx, cancel := context.WithTimeout(ctx, e.conf.PollInterval)
 	defer cancel()
 
-	task, err = e.broker.Dequeue(ctx, e.conf.TaskTimeout)
-	if err != nil {
+	if task, err = e.broker.Dequeue(ctx, e.conf.TaskTimeout); err == nil {
 		e.meter.incrConsumedMessages(ctx, task.Kind)
 	}
 	return task, err

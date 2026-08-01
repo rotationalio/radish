@@ -41,6 +41,10 @@ func (s *MockBrokerSuite) SetupSubTest() {
 	s.Reset()
 }
 
+func (s *MockBrokerSuite) TearDownSuite() {
+	s.Reset()
+}
+
 func TestBroker(t *testing.T) {
 	broker, err := mock.Connect(nil)
 	require.NoError(t, err)
