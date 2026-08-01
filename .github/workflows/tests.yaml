@@ -8,6 +8,10 @@ on:
       - 'v*'
   pull_request:
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   go-lint:
     name: Go Lint
@@ -18,14 +22,13 @@ jobs:
         with:
           go-version: 1.26.x
 
-      - name: Install Staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@latest
-
       - name: Checkout Code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Lint Go Code
-        run: staticcheck ./...
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12
 
   go-test:
     name: Go Test
