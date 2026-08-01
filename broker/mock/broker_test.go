@@ -30,6 +30,7 @@ func (s *MockBrokerSuite) Reset() {
 	s.mock.OnRetry = s.simple.Retry
 	s.mock.OnSuccess = s.simple.Success
 	s.mock.OnVacuum = s.simple.Vacuum
+	s.mock.OnQueueSize = s.simple.QueueSize
 }
 
 func (s *MockBrokerSuite) SetupTest() {
@@ -37,6 +38,10 @@ func (s *MockBrokerSuite) SetupTest() {
 }
 
 func (s *MockBrokerSuite) SetupSubTest() {
+	s.Reset()
+}
+
+func (s *MockBrokerSuite) TearDownSuite() {
 	s.Reset()
 }
 

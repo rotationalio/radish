@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.rtnl.ai/x/semver"
 )
 
@@ -79,4 +81,12 @@ func BuildMeta() string {
 	default:
 		return strings.Join(parts, ".")
 	}
+}
+
+func TraceInstrumentationVersion() trace.TracerOption {
+	return trace.WithInstrumentationVersion(Version(false))
+}
+
+func MetricInstrumentationVersion() metric.MeterOption {
+	return metric.WithInstrumentationVersion(Version(false))
 }

@@ -27,6 +27,7 @@ func (s *PostgresBrokerSuite) SetupTest() {
 }
 
 func (s *PostgresBrokerSuite) TearDownSuite() {
+	s.Reset()
 	s.db.Close()
 }
 

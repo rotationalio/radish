@@ -41,12 +41,9 @@ func (f *Filter) Clause(dialect string) string {
 
 	// Filter on kinds if specified.
 	if len(f.kinds) > 0 {
-		if !where {
-			sb.WriteString(" WHERE ")
-			where = true
-		} else {
-			sb.WriteString(" AND ")
-		}
+		// First condition, no need to check if where is true.
+		sb.WriteString(" WHERE ")
+		where = true
 
 		switch dialect {
 		case dsn.Postgres:
@@ -117,10 +114,10 @@ func (f *Filter) Clause(dialect string) string {
 	}
 
 	// Filter on visible_at after if specified.
+	// Last condition, no need to set where to true.
 	if !f.after.IsZero() {
 		if !where {
 			sb.WriteString(" WHERE ")
-			where = true
 		} else {
 			sb.WriteString(" AND ")
 		}

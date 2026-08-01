@@ -31,6 +31,7 @@ type Broker struct {
 	retrySQL         *sql.Stmt
 	successSQL       *sql.Stmt
 	vacuumSQL        *sql.Stmt
+	queueSizeSQL     *sql.Stmt
 }
 
 const countSQL = `
@@ -440,6 +441,18 @@ func (b *Broker) Vacuum(ctx context.Context, retention time.Duration) (err error
 	return nil
 }
 
+const queueSizeSQL = `
+	SELECT COUNT(*) FROM radish_tasks
+	WHERE status IN ('pending', 'running', 'scheduled', 'retry')
+`
+
+func (b *Broker) QueueSize(ctx context.Context) (count int64, err error) {
+	if err = b.queueSizeSQL.QueryRowContext(ctx).Scan(&count); err != nil {
+		return 0, dbe(err)
+	}
+	return count, nil
+}
+
 func (b *Broker) prepareStatements() (err error) {
 	if b.infoSQL, err = b.db.Prepare(infoSQL); err != nil {
 		return fmt.Errorf("failed to prepare info statement: %w", err)
@@ -470,6 +483,9 @@ func (b *Broker) prepareStatements() (err error) {
 	}
 	if b.vacuumSQL, err = b.db.Prepare(vacuumSQL); err != nil {
 		return fmt.Errorf("failed to prepare vacuum statement: %w", err)
+	}
+	if b.queueSizeSQL, err = b.db.Prepare(queueSizeSQL); err != nil {
+		return fmt.Errorf("failed to prepare queue size statement: %w", err)
 	}
 	return nil
 }
@@ -504,5 +520,8 @@ func (b *Broker) closeStatements() {
 	}
 	if b.vacuumSQL != nil {
 		b.vacuumSQL.Close()
+	}
+	if b.queueSizeSQL != nil {
+		b.queueSizeSQL.Close()
 	}
 }

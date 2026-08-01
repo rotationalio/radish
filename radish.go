@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.rtnl.ai/radish/backoff"
 	"go.rtnl.ai/radish/broker"
 	"go.rtnl.ai/radish/broker/cursor"
@@ -17,6 +19,7 @@ import (
 	internal "go.rtnl.ai/radish/internal/worker"
 	"go.rtnl.ai/radish/jitter"
 	"go.rtnl.ai/radish/models"
+	"go.rtnl.ai/radish/status"
 	"go.rtnl.ai/x/rlog"
 )
 
@@ -28,6 +31,8 @@ type Radish struct {
 	executors []*executor
 	vacuum    *vacuum
 	broker    broker.Broker
+	tracer    trace.Tracer
+	meter     *Metrics
 }
 
 type executor struct {
@@ -36,6 +41,8 @@ type executor struct {
 	broker  broker.Broker
 	backoff backoff.BackOff
 	stop    chan<- struct{}
+	tracer  trace.Tracer
+	meter   *Metrics
 }
 
 func New(conf *Config) (_ *Radish, err error) {
@@ -58,12 +65,20 @@ func New(conf *Config) (_ *Radish, err error) {
 		return nil, ErrNoDatabase
 	}
 
+	// Create metrics from the metric provider.
+	var meter *Metrics
+	if meter, err = NewMetrics(conf.MetricProvider); err != nil {
+		return nil, err
+	}
+
 	return &Radish{
 		conf:      *conf,
 		executors: nil,
 		workers: &Workers{
 			workers: make(map[string]untypedWorker),
 		},
+		tracer: conf.NewTracer(),
+		meter:  meter,
 	}, nil
 }
 
@@ -102,13 +117,25 @@ func (r *Radish) Run() (err error) {
 		}
 	}
 
+	// Register the queue size callback after connecting to the database.
+	if err = r.meter.RegisterQueueSizeCallback(r.QueueSize); err != nil {
+		return err
+	}
+
 	// Create a wait group to wait for all executors to finish.
 	r.wg = &sync.WaitGroup{}
 	r.wg.Add(r.conf.NumWorkers)
 
 	// Create the executors with a copy of the config and workers to execute tasks in parallel.
 	for i := 0; i < r.conf.NumWorkers; i++ {
-		executor := &executor{conf: &r.conf, workers: r.workers, broker: r.broker, backoff: policy}
+		executor := &executor{
+			conf:    &r.conf,
+			workers: r.workers,
+			broker:  r.broker,
+			backoff: policy,
+			tracer:  r.tracer,
+			meter:   r.meter,
+		}
 		r.executors = append(r.executors, executor)
 		executor.run(r.wg)
 	}
@@ -166,8 +193,13 @@ func (r *Radish) isRunning() bool {
 }
 
 func (r *Radish) Enqueue(ctx context.Context, task Task, opts ...Option) (id int64, err error) {
+	ctx, span := r.tracer.Start(ctx, "radish.Enqueue")
+	defer span.End()
+
 	var data []byte
 	if data, err = json.Marshal(task); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "could not marshal task json")
 		return 0, fmt.Errorf("could not marshal task json: %w", err)
 	}
 
@@ -185,10 +217,23 @@ func (r *Radish) Enqueue(ctx context.Context, task Task, opts ...Option) (id int
 		}
 	}
 
-	return r.broker.Enqueue(ctx, task.Kind(), data, brokerOptions)
+	id, err = r.broker.Enqueue(ctx, task.Kind(), data, brokerOptions)
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "enqueue operation failed")
+
+	} else {
+		r.meter.incrSentMessages(ctx, task.Kind())
+	}
+
+	return id, err
 }
 
 func (r *Radish) Schedule(ctx context.Context, task Task, executeAfter time.Time, opts ...Option) (id int64, err error) {
+	ctx, span := r.tracer.Start(ctx, "radish.Schedule")
+	defer span.End()
+
 	var data []byte
 	if data, err = json.Marshal(task); err != nil {
 		return 0, fmt.Errorf("could not marshal task json: %w", err)
@@ -208,26 +253,84 @@ func (r *Radish) Schedule(ctx context.Context, task Task, executeAfter time.Time
 		}
 	}
 
-	return r.broker.Schedule(ctx, task.Kind(), data, executeAfter, brokerOptions)
+	id, err = r.broker.Schedule(ctx, task.Kind(), data, executeAfter, brokerOptions)
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "schedule operation failed")
+	} else {
+		r.meter.incrSentMessages(ctx, task.Kind())
+	}
+
+	return id, err
 }
 
 // List returns a cursor over the tasks in the broker matching the given filter.
 // Pass a nil filter to list all tasks. The caller must Close the returned cursor
 // to release the underlying database transaction.
 func (r *Radish) List(ctx context.Context, filter *cursor.Filter) (tasks *cursor.Cursor, err error) {
-	return r.broker.List(ctx, filter)
+	ctx, span := r.tracer.Start(ctx, "radish.List")
+	defer span.End()
+
+	tasks, err = r.broker.List(ctx, filter)
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "list operation failed")
+	}
+
+	return tasks, err
 }
 
 func (r *Radish) Info(ctx context.Context, id int64) (task *models.TaskMeta, err error) {
-	return r.broker.Info(ctx, id)
+	ctx, span := r.tracer.Start(ctx, "radish.Info")
+	defer span.End()
+
+	task, err = r.broker.Info(ctx, id)
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "info operation failed")
+	}
+
+	return task, err
 }
 
 func (r *Radish) Cancel(ctx context.Context, id int64) (err error) {
-	return r.broker.Cancel(ctx, id)
+	ctx, span := r.tracer.Start(ctx, "radish.Cancel")
+	defer span.End()
+
+	err = r.broker.Cancel(ctx, id)
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "cancel operation failed")
+	} else {
+		// Update the metrics with the task kind that was cancelled.
+		if info, err := r.broker.Info(ctx, id); err == nil {
+			r.meter.consumeCancelledMessages(ctx, info.Kind)
+			r.meter.recordCompletedTask(ctx, info.Kind, status.Cancelled)
+		} else {
+			r.meter.consumeCancelledMessages(ctx, "unknown")
+			r.meter.recordCompletedTask(ctx, "unknown", status.Cancelled)
+		}
+	}
+
+	return err
 }
 
 func (r *Radish) Vacuum(ctx context.Context) (err error) {
-	return r.broker.Vacuum(ctx, r.conf.Retention)
+	ctx, span := r.tracer.Start(ctx, "radish.Vacuum")
+	defer span.End()
+
+	err = r.broker.Vacuum(ctx, r.conf.Retention)
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "vacuum operation failed")
+	}
+
+	return err
 }
 
 //============================================================================
@@ -284,29 +387,59 @@ func (e *executor) dequeue(stop <-chan struct{}) (err error) {
 		default:
 		}
 
-		// Dequeue and execute the task.
-		var task *models.TaskMeta
-		if task, err = e.dequeueTask(); err != nil {
-			if errors.Is(err, dberr.ErrNotFound) {
-				return nil
-			}
-			return err
-		}
-
-		if err = e.execute(task); err != nil {
+		if err = e.dequeueOne(); err != nil {
 			return err
 		}
 	}
 }
 
-func (e *executor) dequeueTask() (task *models.TaskMeta, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), e.conf.PollInterval)
-	defer cancel()
+func (e *executor) dequeueOne() (err error) {
+	// Create a context and a span for each dequeue operation.
+	ctx, span := e.tracer.Start(context.Background(), "radish.Dequeue")
+	defer span.End()
 
-	return e.broker.Dequeue(ctx, e.conf.TaskTimeout)
+	// Dequeue and execute the task.
+	var task *models.TaskMeta
+	if task, err = e.dequeueTask(ctx); err != nil {
+		if errors.Is(err, dberr.ErrNotFound) {
+			return nil
+		}
+
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "unable to dequeue task")
+		return err
+	}
+
+	if err = e.execute(ctx, task); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "unable to execute task")
+		return err
+	}
+
+	return nil
 }
 
-func (e *executor) execute(task *models.TaskMeta) (err error) {
+func (e *executor) dequeueTask(ctx context.Context) (task *models.TaskMeta, err error) {
+	ctx, cancel := context.WithTimeout(ctx, e.conf.PollInterval)
+	defer cancel()
+
+	if task, err = e.broker.Dequeue(ctx, e.conf.TaskTimeout); err == nil {
+		e.meter.incrConsumedMessages(ctx, task.Kind)
+	}
+	return task, err
+}
+
+func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err error) {
+	start := time.Now()
+	ctx, span := e.tracer.Start(ctx, "radish.Execute")
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "unable to execute task")
+		}
+		span.End()
+	}()
+
 	// Create a logger with the task attributes for logging.
 	taskLog := rlog.With("task", task.ID, "kind", task.Kind, "attempts", task.Attempts)
 
@@ -315,7 +448,11 @@ func (e *executor) execute(task *models.TaskMeta) (err error) {
 	if worker, err = e.workers.Get(task); err != nil {
 		// If the task is not registered, log it
 		// NOTE: not a fatal error so no error is returned.
+		e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "unregistered_task")
 		taskLog.Error("dequeued unregistered task", "error", err)
+
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "unregistered task")
 		return nil
 	}
 
@@ -328,7 +465,7 @@ func (e *executor) execute(task *models.TaskMeta) (err error) {
 
 	// Execute the task with a timeout.
 	taskLog.Debug("executing task", "timeout", timeout)
-	taskctx, taskcancel := context.WithTimeout(context.Background(), timeout)
+	taskctx, taskcancel := context.WithTimeout(ctx, timeout)
 	defer taskcancel()
 
 	// Unmarshal the task.
@@ -340,9 +477,11 @@ func (e *executor) execute(task *models.TaskMeta) (err error) {
 		task.AddError(err, "")
 		if err = e.broker.Fail(taskctx, task.ID, task.Errors); err != nil {
 			// Inability to mark a task as failed is a fatal error.
+			e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:fatal")
 			taskLog.Fatal("could not mark task as failed", "error", err)
 			return err
 		}
+		e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "json:unmarshal_error")
 		return nil
 	}
 
@@ -367,16 +506,20 @@ func (e *executor) execute(task *models.TaskMeta) (err error) {
 			// Update the broker with the retry information.
 			if err = e.broker.Retry(taskctx, task.ID, task.Errors, delay); err != nil {
 				// Inability to retry the task is a fatal error.
+				e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:fatal")
 				taskLog.Fatal("could not retry task", "error", err)
 				return err
 			}
 
+			e.meter.incrSentMessages(ctx, task.Kind)
+			e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "radish:retry")
 			taskLog.Info("task failed, retrying", "delay", delay)
 			return nil
 		} else {
 			// Mark the task as failed.
 			if err = e.broker.Fail(taskctx, task.ID, task.Errors); err != nil {
 				// Inability to mark a task as failed is a fatal error.
+				e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:fatal")
 				taskLog.Fatal("could not mark task as failed", "error", err)
 				return err
 			}
@@ -386,6 +529,8 @@ func (e *executor) execute(task *models.TaskMeta) (err error) {
 				"duration", time.Since(task.LastAttempt.Time),
 				"elapsed", time.Since(task.Created),
 			)
+			e.meter.recordCompletedTask(ctx, task.Kind, status.Failed)
+			e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "radish:failed")
 			return nil
 		}
 
@@ -393,6 +538,7 @@ func (e *executor) execute(task *models.TaskMeta) (err error) {
 		// Mark the task as successful.
 		if err = e.broker.Success(taskctx, task.ID); err != nil {
 			// Inability to mark a task as successful is a fatal error.
+			e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:fatal")
 			taskLog.Fatal("could not mark task as successful", "error", err)
 			return err
 		}
@@ -402,6 +548,8 @@ func (e *executor) execute(task *models.TaskMeta) (err error) {
 			"duration", time.Since(task.LastAttempt.Time),
 			"elapsed", time.Since(task.Created),
 		)
+		e.meter.recordCompletedTask(ctx, task.Kind, status.Succeeded)
+		e.meter.recordTaskDuration(ctx, time.Since(start), task.Kind)
 		return nil
 	}
 }

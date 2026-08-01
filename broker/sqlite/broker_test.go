@@ -28,6 +28,7 @@ func (s *SQLiteBrokerSuite) SetupTest() {
 }
 
 func (s *SQLiteBrokerSuite) TearDownSuite() {
+	s.Reset()
 	s.db.Close()
 }
 

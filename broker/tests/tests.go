@@ -475,6 +475,46 @@ func (s *BrokerTestSuite) TestScheduleOnlyOneReplace() {
 	})
 }
 
+func (s *BrokerTestSuite) TestQueueSize() {
+	ctx := context.Background()
+	require := s.Require()
+
+	count, err := s.Broker.QueueSize(ctx)
+	require.NoError(err, "unable to get queue size")
+	require.Equal(int64(0), count, "expected queue size to be 0")
+
+	// Enqueue some tasks
+	configs := []EnqueueConfig{
+		{
+			Kind:       "test",
+			NPending:   16,
+			NRetry:     8,
+			NSuccess:   4,
+			NFailed:    1,
+			NScheduled: 3,
+			NCancelled: 2,
+		},
+		{
+			Kind:       "foo",
+			NPending:   8,
+			NRetry:     1,
+			NSuccess:   122,
+			NFailed:    0,
+			NScheduled: 8,
+			NCancelled: 1,
+		},
+	}
+
+	for _, config := range configs {
+		err := config.Enqueue(ctx, s.Broker)
+		require.NoError(err, "unable to enqueue tasks")
+	}
+
+	count, err = s.Broker.QueueSize(ctx)
+	require.NoError(err, "unable to get queue size")
+	require.Equal(configs[0].QueueSize()+configs[1].QueueSize(), count, "expected queue size to be the sum of the enqueued tasks")
+}
+
 type EnqueueConfig struct {
 	Kind       string    // the kind to enqueue
 	NPending   int       // the number of tasks to enqueue
@@ -495,11 +535,7 @@ func (c *EnqueueConfig) Total() int64 {
 
 func (c *EnqueueConfig) Enqueue(ctx context.Context, b broker.Broker) (err error) {
 	p, r, s, f, sc, ca := c.NPending, c.NRetry, c.NSuccess, c.NFailed, c.NScheduled, c.NCancelled
-	for {
-		if p+r+s+f+sc+ca == 0 {
-			break
-		}
-
+	for p+r+s+f+sc+ca != 0 {
 		if p > 0 {
 			var id int64
 			if id, err = b.Enqueue(ctx, c.Kind, []byte(testPayload), nil); err != nil {
@@ -578,6 +614,10 @@ func (c *EnqueueConfig) Enqueue(ctx context.Context, b broker.Broker) (err error
 	}
 
 	return nil
+}
+
+func (c *EnqueueConfig) QueueSize() int64 {
+	return int64(c.NPending + c.NRetry + c.NScheduled)
 }
 
 func randDelay() time.Duration {
