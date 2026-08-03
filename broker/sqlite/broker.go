@@ -530,24 +530,23 @@ func (b *Broker) QueueStatus(ctx context.Context) (out *models.QueueStatus, err 
 }
 
 const timeSeriesSQL = `
-WITH bins AS (
-	SELECT value AS period
-	FROM generate_series(
-		unixepoch(:after),
-		unixepoch(:before),
-		:interval
-	)
+WITH RECURSIVE bins(value) AS (
+	SELECT :after
+	UNION ALL
+	SELECT value + :interval
+	FROM bins
+	WHERE value < :before
 )
 SELECT
-	datetime(b.period, 'unixepoch') AS timestamp,
+	datetime(b.value, 'unixepoch') AS timestamp,
 	COUNT(t.id) AS enqueued
 FROM bins b
 LEFT JOIN radish_tasks t
-	unixepoch(t.created) >= b.period AND unixepoch(t.created) < (b.period + :interval)
+	ON t.created >= b.value AND t.created < (b.value + :interval)
 GROUP BY
-	b.period
+	b.value
 ORDER BY
-	b.period;
+	b.value;
 `
 
 // NOTE: cannot specify a zero-valued start time (e.g. after) or specify an after time
