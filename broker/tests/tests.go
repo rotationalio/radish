@@ -28,8 +28,7 @@ const (
 // TODO: increase coverage of the broker interface and expected invariants.
 type BrokerTestSuite struct {
 	suite.Suite
-	Broker       broker.Broker
-	LoadFixtures func(ctx context.Context, name string) error
+	Broker broker.Broker
 }
 
 func New(b broker.Broker) *BrokerTestSuite {
@@ -514,33 +513,4 @@ func (s *BrokerTestSuite) TestQueueSize() {
 	count, err = s.Broker.QueueSize(ctx)
 	require.NoError(err, "unable to get queue size")
 	require.Equal(configs[0].QueueSize()+configs[1].QueueSize(), count, "expected queue size to be the sum of the enqueued tasks")
-}
-
-func (s *BrokerTestSuite) TestQueueStatus() {
-	if s.LoadFixtures == nil {
-		s.T().Skip("no load fixtures function provided")
-		return
-	}
-
-	require := s.Require()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	err := s.LoadFixtures(ctx, "timeseries.sql")
-	require.NoError(err, "unable to load fixtures")
-
-}
-
-func (s *BrokerTestSuite) TestTimeSeries() {
-	if s.LoadFixtures == nil {
-		s.T().Skip("no load fixtures function provided")
-		return
-	}
-
-	require := s.Require()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	err := s.LoadFixtures(ctx, "timeseries.sql")
-	require.NoError(err, "unable to load fixtures")
 }
