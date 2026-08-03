@@ -333,6 +333,34 @@ func (r *Radish) Vacuum(ctx context.Context) (err error) {
 	return err
 }
 
+func (r *Radish) QueueStatus(ctx context.Context) (out *models.QueueStatus, err error) {
+	ctx, span := r.tracer.Start(ctx, "radish.QueueStatus")
+	defer span.End()
+
+	out, err = r.broker.QueueStatus(ctx)
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "queue status operation failed")
+	}
+
+	return out, err
+}
+
+func (r *Radish) TimeSeries(ctx context.Context, after, before time.Time, interval time.Duration) (series models.Series, err error) {
+	ctx, span := r.tracer.Start(ctx, "radish.TimeSeries")
+	defer span.End()
+
+	series, err = r.broker.TimeSeries(ctx, after, before, interval)
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "time series operation failed")
+	}
+
+	return series, err
+}
+
 //============================================================================
 // Executor
 //============================================================================

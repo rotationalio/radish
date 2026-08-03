@@ -15,18 +15,20 @@ import (
 )
 
 const (
-	Close     = "Close"
-	List      = "List"
-	Info      = "Info"
-	Enqueue   = "Enqueue"
-	Schedule  = "Schedule"
-	Dequeue   = "Dequeue"
-	Cancel    = "Cancel"
-	Fail      = "Fail"
-	Retry     = "Retry"
-	Success   = "Success"
-	Vacuum    = "Vacuum"
-	QueueSize = "QueueSize"
+	Close       = "Close"
+	List        = "List"
+	Info        = "Info"
+	Enqueue     = "Enqueue"
+	Schedule    = "Schedule"
+	Dequeue     = "Dequeue"
+	Cancel      = "Cancel"
+	Fail        = "Fail"
+	Retry       = "Retry"
+	Success     = "Success"
+	Vacuum      = "Vacuum"
+	QueueSize   = "QueueSize"
+	QueueStatus = "QueueStatus"
+	TimeSeries  = "TimeSeries"
 )
 
 var ErrNoMockFunction = errors.New("no mock function provided")
@@ -36,18 +38,20 @@ func ErrNoMock(name string) error {
 }
 
 type Broker struct {
-	OnClose     func() error
-	OnList      func(ctx context.Context, filter *cursor.Filter) (tasks *cursor.Cursor, err error)
-	OnInfo      func(ctx context.Context, id int64) (task *models.TaskMeta, err error)
-	OnEnqueue   func(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error)
-	OnSchedule  func(ctx context.Context, kind string, payload []byte, executeAfter time.Time, opts *options.Options) (id int64, err error)
-	OnDequeue   func(ctx context.Context, ttl time.Duration) (task *models.TaskMeta, err error)
-	OnCancel    func(ctx context.Context, id int64) (err error)
-	OnFail      func(ctx context.Context, id int64, errors models.AttemptErrors) (err error)
-	OnRetry     func(ctx context.Context, id int64, errors models.AttemptErrors, delay time.Duration) (err error)
-	OnSuccess   func(ctx context.Context, id int64) (err error)
-	OnVacuum    func(ctx context.Context, retention time.Duration) (err error)
-	OnQueueSize func(ctx context.Context) (count int64, err error)
+	OnClose       func() error
+	OnList        func(ctx context.Context, filter *cursor.Filter) (tasks *cursor.Cursor, err error)
+	OnInfo        func(ctx context.Context, id int64) (task *models.TaskMeta, err error)
+	OnEnqueue     func(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error)
+	OnSchedule    func(ctx context.Context, kind string, payload []byte, executeAfter time.Time, opts *options.Options) (id int64, err error)
+	OnDequeue     func(ctx context.Context, ttl time.Duration) (task *models.TaskMeta, err error)
+	OnCancel      func(ctx context.Context, id int64) (err error)
+	OnFail        func(ctx context.Context, id int64, errors models.AttemptErrors) (err error)
+	OnRetry       func(ctx context.Context, id int64, errors models.AttemptErrors, delay time.Duration) (err error)
+	OnSuccess     func(ctx context.Context, id int64) (err error)
+	OnVacuum      func(ctx context.Context, retention time.Duration) (err error)
+	OnQueueSize   func(ctx context.Context) (count int64, err error)
+	OnQueueStatus func(ctx context.Context) (status *models.QueueStatus, err error)
+	OnTimeSeries  func(ctx context.Context, before, after time.Time, interval time.Duration) (series models.Series, err error)
 
 	mu    sync.Mutex
 	calls map[string]int
@@ -71,6 +75,8 @@ func (b *Broker) Reset() {
 	b.OnSuccess = nil
 	b.OnVacuum = nil
 	b.OnQueueSize = nil
+	b.OnQueueStatus = nil
+	b.OnTimeSeries = nil
 	b.calls = nil
 	b.mu.Unlock()
 }
@@ -127,6 +133,14 @@ func (b *Broker) ErrorOn(name string, err error) {
 	case QueueSize:
 		b.OnQueueSize = func(ctx context.Context) (count int64, err error) {
 			return 0, err
+		}
+	case QueueStatus:
+		b.OnQueueStatus = func(ctx context.Context) (status *models.QueueStatus, err error) {
+			return nil, err
+		}
+	case TimeSeries:
+		b.OnTimeSeries = func(ctx context.Context, before, after time.Time, interval time.Duration) (series models.Series, err error) {
+			return nil, err
 		}
 	default:
 		panic(fmt.Sprintf("unknown broker method: %s", name))
@@ -269,6 +283,22 @@ func (b *Broker) QueueSize(ctx context.Context) (count int64, err error) {
 		return b.OnQueueSize(ctx)
 	}
 	return 0, ErrNoMock(QueueSize)
+}
+
+func (b *Broker) QueueStatus(ctx context.Context) (status *models.QueueStatus, err error) {
+	b.incr(QueueStatus)
+	if b.OnQueueStatus != nil {
+		return b.OnQueueStatus(ctx)
+	}
+	return nil, ErrNoMock(QueueStatus)
+}
+
+func (b *Broker) TimeSeries(ctx context.Context, before, after time.Time, interval time.Duration) (series models.Series, err error) {
+	b.incr(TimeSeries)
+	if b.OnTimeSeries != nil {
+		return b.OnTimeSeries(ctx, before, after, interval)
+	}
+	return nil, ErrNoMock(TimeSeries)
 }
 
 func (b *Broker) incr(name string) {

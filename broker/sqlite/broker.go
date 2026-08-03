@@ -21,17 +21,21 @@ type Broker struct {
 	db *sql.DB
 
 	// Prepared statements
-	infoSQL          *sql.Stmt
-	enqueueSQL       *sql.Stmt
-	scheduleSQL      *sql.Stmt
-	dequeueSelectSQL *sql.Stmt
-	dequeueUpdateSQL *sql.Stmt
-	cancelSQL        *sql.Stmt
-	failedSQL        *sql.Stmt
-	retrySQL         *sql.Stmt
-	successSQL       *sql.Stmt
-	vacuumSQL        *sql.Stmt
-	queueSizeSQL     *sql.Stmt
+	infoSQL              *sql.Stmt
+	enqueueSQL           *sql.Stmt
+	scheduleSQL          *sql.Stmt
+	dequeueSelectSQL     *sql.Stmt
+	dequeueUpdateSQL     *sql.Stmt
+	cancelSQL            *sql.Stmt
+	failedSQL            *sql.Stmt
+	retrySQL             *sql.Stmt
+	successSQL           *sql.Stmt
+	vacuumSQL            *sql.Stmt
+	queueSizeSQL         *sql.Stmt
+	queueStatusCountsSQL *sql.Stmt
+	queueKindsCountsSQL  *sql.Stmt
+	queueTimeRangeSQL    *sql.Stmt
+	timeSeriesSQL        *sql.Stmt
 }
 
 const countSQL = `
@@ -453,6 +457,135 @@ func (b *Broker) QueueSize(ctx context.Context) (count int64, err error) {
 	return count, nil
 }
 
+const (
+	queueStatusCountsSQL = "SELECT status, COUNT(*) FROM radish_tasks GROUP BY status;"
+	queueKindsCountsSQL  = "SELECT kind, COUNT(*) FROM radish_tasks GROUP BY kind;"
+	queueTimeRangeSQL    = "SELECT MIN(created), MAX(created), MAX(visible_at) FROM radish_tasks;"
+)
+
+func (b *Broker) QueueStatus(ctx context.Context) (out *models.QueueStatus, err error) {
+	out = &models.QueueStatus{
+		Statuses: make(map[status.Status]int64, 7),
+		Kinds:    make(map[string]int64),
+	}
+
+	var tx *sql.Tx
+	if tx, err = b.BeginTx(ctx, &sql.TxOptions{ReadOnly: true}); err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	queueStatusCounts := tx.StmtContext(ctx, b.queueStatusCountsSQL)
+	defer queueStatusCounts.Close()
+
+	var statusRows *sql.Rows
+	if statusRows, err = queueStatusCounts.QueryContext(ctx); err != nil {
+		return nil, dbe(err)
+	}
+	defer statusRows.Close()
+
+	for statusRows.Next() {
+		var state status.Status
+		var count int64
+		if err = statusRows.Scan(&state, &count); err != nil {
+			return nil, dbe(err)
+		}
+
+		out.Statuses[state] = count
+		switch {
+		case state <= status.Running:
+			out.Awaiting += count
+		case state > status.Running:
+			out.Completed += count
+		}
+	}
+
+	queueKindsCounts := tx.StmtContext(ctx, b.queueKindsCountsSQL)
+	defer queueKindsCounts.Close()
+
+	var kindRows *sql.Rows
+	if kindRows, err = queueKindsCounts.QueryContext(ctx); err != nil {
+		return nil, dbe(err)
+	}
+	defer kindRows.Close()
+
+	for kindRows.Next() {
+		var kind string
+		var count int64
+		if err = kindRows.Scan(&kind, &count); err != nil {
+			return nil, dbe(err)
+		}
+
+		out.Kinds[kind] = count
+	}
+
+	queueTimeRange := tx.StmtContext(ctx, b.queueTimeRangeSQL)
+	defer queueTimeRange.Close()
+
+	if err = queueTimeRange.QueryRowContext(ctx).Scan(&out.Earliest, &out.Latest, &out.ScheduledUntil); err != nil {
+		return nil, dbe(err)
+	}
+
+	return out, nil
+}
+
+const timeSeriesSQL = `
+WITH bins AS (
+	SELECT value AS period
+	FROM generate_series(
+		unixepoch(:after),
+		unixepoch(:before),
+		:interval
+	)
+)
+SELECT
+	datetime(b.period, 'unixepoch') AS timestamp,
+	COUNT(t.id) AS enqueued
+FROM bins b
+LEFT JOIN radish_tasks t
+	unixepoch(t.created) >= b.period AND unixepoch(t.created) < (b.period + :interval)
+GROUP BY
+	b.period
+ORDER BY
+	b.period;
+`
+
+// NOTE: cannot specify a zero-valued start time (e.g. after) or specify an after time
+// that is after the end time (e.g. before). The minimum interval is 1 minute. The
+// interval will also be truncated to the nearest second for sqlite3 support.
+func (b *Broker) TimeSeries(ctx context.Context, after, before time.Time, interval time.Duration) (series models.Series, err error) {
+	// If before is zero, set it to the current time.
+	if before.IsZero() {
+		before = time.Now()
+	}
+
+	// Time series constraints.
+	if after.IsZero() || after.After(before) || interval < 1*time.Minute {
+		return nil, errors.ErrInvalidTimeRange
+	}
+
+	// Truncate the interval to the nearest second.
+	interval = interval.Truncate(time.Second)
+	seconds := int64(interval.Seconds())
+
+	var rows *sql.Rows
+	if rows, err = b.timeSeriesSQL.QueryContext(ctx, sql.Named("after", after), sql.Named("before", before), sql.Named("interval", seconds)); err != nil {
+		return nil, dbe(err)
+	}
+	defer rows.Close()
+
+	series = make(models.Series, 0)
+	for rows.Next() {
+		period := &models.Period{}
+		if err = period.Scan(rows); err != nil {
+			return nil, dbe(err)
+		}
+		series = append(series, period)
+	}
+
+	return series, nil
+}
+
 func (b *Broker) prepareStatements() (err error) {
 	if b.infoSQL, err = b.db.Prepare(infoSQL); err != nil {
 		return fmt.Errorf("failed to prepare info statement: %w", err)
@@ -486,6 +619,18 @@ func (b *Broker) prepareStatements() (err error) {
 	}
 	if b.queueSizeSQL, err = b.db.Prepare(queueSizeSQL); err != nil {
 		return fmt.Errorf("failed to prepare queue size statement: %w", err)
+	}
+	if b.queueStatusCountsSQL, err = b.db.Prepare(queueStatusCountsSQL); err != nil {
+		return fmt.Errorf("failed to prepare queue status counts statement: %w", err)
+	}
+	if b.queueKindsCountsSQL, err = b.db.Prepare(queueKindsCountsSQL); err != nil {
+		return fmt.Errorf("failed to prepare queue kinds counts statement: %w", err)
+	}
+	if b.queueTimeRangeSQL, err = b.db.Prepare(queueTimeRangeSQL); err != nil {
+		return fmt.Errorf("failed to prepare queue time range statement: %w", err)
+	}
+	if b.timeSeriesSQL, err = b.db.Prepare(timeSeriesSQL); err != nil {
+		return fmt.Errorf("failed to prepare time series statement: %w", err)
 	}
 	return nil
 }
@@ -523,5 +668,17 @@ func (b *Broker) closeStatements() {
 	}
 	if b.queueSizeSQL != nil {
 		b.queueSizeSQL.Close()
+	}
+	if b.queueStatusCountsSQL != nil {
+		b.queueStatusCountsSQL.Close()
+	}
+	if b.queueKindsCountsSQL != nil {
+		b.queueKindsCountsSQL.Close()
+	}
+	if b.queueTimeRangeSQL != nil {
+		b.queueTimeRangeSQL.Close()
+	}
+	if b.timeSeriesSQL != nil {
+		b.timeSeriesSQL.Close()
 	}
 }
