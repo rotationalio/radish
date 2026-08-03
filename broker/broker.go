@@ -17,6 +17,8 @@ import (
 
 type Broker interface {
 	io.Closer
+	Monitor
+
 	List(ctx context.Context, filter *cursor.Filter) (tasks *cursor.Cursor, err error)
 	Info(ctx context.Context, id int64) (task *models.TaskMeta, err error)
 	Enqueue(ctx context.Context, kind string, payload []byte, opts *options.Options) (id int64, err error)
@@ -27,7 +29,12 @@ type Broker interface {
 	Retry(ctx context.Context, id int64, errors models.AttemptErrors, delay time.Duration) (err error)
 	Success(ctx context.Context, id int64) (err error)
 	Vacuum(ctx context.Context, retention time.Duration) (err error)
+}
+
+type Monitor interface {
 	QueueSize(ctx context.Context) (count int64, err error)
+	QueueStatus(ctx context.Context) (status *models.QueueStatus, err error)
+	TimeSeries(ctx context.Context, after, before time.Time, interval time.Duration) (series models.Series, err error)
 }
 
 func Connect(databaseURL string) (b Broker, err error) {

@@ -17,6 +17,7 @@ var (
 	ErrNotConnected      = errors.New("database connection not established")
 	ErrTaskNotCancelable = errors.New("task cannot be cancelled")
 	ErrKindsRequired     = errors.New("invalid options: kinds array is required")
+	ErrInvalidTimeRange  = errors.New("invalid time range to create time series")
 	ErrHighlander        = errors.New("task of specified kind already enqueued")
 	ErrOnlyOne           = ErrHighlander
 )

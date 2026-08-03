@@ -31,6 +31,8 @@ func (s *MockBrokerSuite) Reset() {
 	s.mock.OnSuccess = s.simple.Success
 	s.mock.OnVacuum = s.simple.Vacuum
 	s.mock.OnQueueSize = s.simple.QueueSize
+	s.mock.OnQueueStatus = s.simple.QueueStatus
+	s.mock.OnTimeSeries = s.simple.TimeSeries
 }
 
 func (s *MockBrokerSuite) SetupTest() {

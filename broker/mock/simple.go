@@ -397,3 +397,68 @@ func (s *Simple) QueueSize(ctx context.Context) (count int64, err error) {
 
 	return count, nil
 }
+
+func (s *Simple) QueueStatus(ctx context.Context) (out *models.QueueStatus, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return nil, errors.ErrNotConnected
+	}
+
+	out = &models.QueueStatus{
+		Statuses: make(map[status.Status]int64, 7),
+		Kinds:    make(map[string]int64),
+	}
+
+	for _, task := range s.tasks {
+		out.Statuses[task.Status]++
+		out.Kinds[task.Kind]++
+
+		if task.Status <= status.Running {
+			out.Awaiting++
+		} else {
+			out.Completed++
+		}
+
+		if out.Earliest.IsZero() || task.Created.Before(out.Earliest) {
+			out.Earliest = task.Created
+		}
+
+		if out.Latest.IsZero() || task.Created.After(out.Latest) {
+			out.Latest = task.Created
+		}
+
+		if out.ScheduledUntil.IsZero() || (task.VisibleAt.Valid && task.VisibleAt.Time.After(out.ScheduledUntil)) {
+			out.ScheduledUntil = task.VisibleAt.Time
+		}
+	}
+
+	return nil, nil
+}
+
+func (s *Simple) TimeSeries(ctx context.Context, after, before time.Time, interval time.Duration) (series models.Series, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return nil, errors.ErrNotConnected
+	}
+
+	series = make(models.Series, 0)
+	for after.Before(before) {
+		series = append(series, &models.Period{
+			Timestamp: after,
+			Tasks:     0,
+		})
+		after = after.Add(interval)
+	}
+
+	for _, task := range s.tasks {
+		if task.Created.After(after) && task.Created.Before(before) {
+			series[task.Created.Sub(after)/interval].Tasks++
+		}
+	}
+
+	return nil, nil
+}

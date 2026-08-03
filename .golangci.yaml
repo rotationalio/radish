@@ -8,3 +8,4 @@ linters:
         - (*database/sql.Tx).Rollback
         - (*database/sql.Tx).Commit
         - (*database/sql.Stmt).Close
+        - (*database/sql.Rows).Close
