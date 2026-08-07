@@ -16,7 +16,13 @@ func Use(db *sql.DB) (broker *Broker, err error) {
 	if err = initializeDB(db); err != nil {
 		return nil, err
 	}
-	return &Broker{db: db}, nil
+
+	broker = &Broker{db: db}
+	if err = broker.prepareStatements(); err != nil {
+		return nil, err
+	}
+
+	return broker, nil
 }
 
 // Connect to a new database using the provided DSN. The DSN is parsed for connection

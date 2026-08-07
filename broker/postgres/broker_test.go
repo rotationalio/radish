@@ -2,9 +2,11 @@ package postgres_test
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"testing"
 
+	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"go.rtnl.ai/radish/broker/postgres"
@@ -44,10 +46,22 @@ func TestPostgresBroker(t *testing.T) {
 	db, err := postgres.Connect(uri)
 	require.NoError(t, err)
 
-	s := &PostgresBrokerSuite{
-		BrokerTestSuite: tests.BrokerTestSuite{Broker: db},
-		db:              db,
+	runSuite := func(name string, broker *postgres.Broker) {
+		s := &PostgresBrokerSuite{
+			BrokerTestSuite: tests.BrokerTestSuite{Broker: broker},
+			db:              broker,
+		}
+		t.Run(name, func(t *testing.T) {
+			suite.Run(t, s)
+		})
 	}
 
-	suite.Run(t, s)
+	runSuite("Connect", db)
+
+	managedDB, err := sql.Open("postgres", databaseURL)
+	require.NoError(t, err)
+
+	db, err = postgres.Use(managedDB)
+	require.NoError(t, err)
+	runSuite("Use", db)
 }
