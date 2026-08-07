@@ -14,9 +14,9 @@ import (
 const (
 	VersionMajor         = 1
 	VersionMinor         = 2
-	VersionPatch         = 1
+	VersionPatch         = 2
 	VersionReleaseLevel  = "beta"
-	VersionReleaseNumber = 4
+	VersionReleaseNumber = 5
 )
 
 // Set the GitVersion via -ldflags="-X 'go.rtnl.ai/endeavor/pkg.GitVersion=$(git rev-parse --short HEAD)'"
