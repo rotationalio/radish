@@ -180,6 +180,11 @@ func (r *Radish) Shutdown() {
 			rlog.Error("could not close broker", "error", err)
 		}
 	}
+
+	// Unregister the telemetry callback.
+	if err := r.meter.Shutdown(); err != nil {
+		rlog.Error("could not shutdown telemetry", "error", err)
+	}
 }
 
 func (r *Radish) IsRunning() bool {
@@ -512,9 +517,8 @@ func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err erro
 		// Mark the task as failed.
 		task.AddError(err, "")
 		if err = e.broker.Fail(taskctx, task.ID, task.Errors); err != nil {
-			// Inability to mark a task as failed is a fatal error.
-			e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:fatal")
-			taskLog.Fatal("could not mark task as failed", "error", err)
+			e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:critical")
+			taskLog.Error("could not mark task as failed", "error", err)
 			return err
 		}
 		e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "json:unmarshal_error")
@@ -541,9 +545,8 @@ func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err erro
 
 			// Update the broker with the retry information.
 			if err = e.broker.Retry(taskctx, task.ID, task.Errors, delay); err != nil {
-				// Inability to retry the task is a fatal error.
-				e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:fatal")
-				taskLog.Fatal("could not retry task", "error", err)
+				e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:critical")
+				taskLog.Error("could not retry task", "error", err)
 				return err
 			}
 
@@ -554,9 +557,8 @@ func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err erro
 		} else {
 			// Mark the task as failed.
 			if err = e.broker.Fail(taskctx, task.ID, task.Errors); err != nil {
-				// Inability to mark a task as failed is a fatal error.
-				e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:fatal")
-				taskLog.Fatal("could not mark task as failed", "error", err)
+				e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:critical")
+				taskLog.Error("could not mark task as failed", "error", err)
 				return err
 			}
 
@@ -574,8 +576,8 @@ func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err erro
 		// Mark the task as successful.
 		if err = e.broker.Success(taskctx, task.ID); err != nil {
 			// Inability to mark a task as successful is a fatal error.
-			e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:fatal")
-			taskLog.Fatal("could not mark task as successful", "error", err)
+			e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:critical")
+			taskLog.Error("could not mark task as successful", "error", err)
 			return err
 		}
 
