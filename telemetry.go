@@ -16,12 +16,13 @@ const (
 )
 
 type Metrics struct {
-	meter        metric.Meter
-	queueSize    metric.Int64ObservableUpDownCounter
-	completed    metric.Int64Counter
-	taskDuration metric.Float64Histogram
-	sent         metric.Int64Counter
-	consumed     metric.Int64Counter
+	meter         metric.Meter
+	queueSize     metric.Int64ObservableUpDownCounter
+	completed     metric.Int64Counter
+	taskDuration  metric.Float64Histogram
+	sent          metric.Int64Counter
+	consumed      metric.Int64Counter
+	registrations []metric.Registration
 }
 
 func NewMetrics(mp metric.MeterProvider) (m *Metrics, err error) {
@@ -78,9 +79,23 @@ func NewMetrics(mp metric.MeterProvider) (m *Metrics, err error) {
 	return m, nil
 }
 
-func (m *Metrics) RegisterQueueSizeCallback(f metric.Callback) error {
-	_, err := m.meter.RegisterCallback(f, m.queueSize)
-	return err
+func (m *Metrics) RegisterQueueSizeCallback(f metric.Callback) (err error) {
+	var registration metric.Registration
+	if registration, err = m.meter.RegisterCallback(f, m.queueSize); err != nil {
+		return err
+	}
+	m.registrations = append(m.registrations, registration)
+	return nil
+}
+
+func (m *Metrics) Shutdown() error {
+	for _, registration := range m.registrations {
+		if err := registration.Unregister(); err != nil {
+			return err
+		}
+	}
+	m.registrations = nil
+	return nil
 }
 
 func (r *Radish) QueueSize(ctx context.Context, observer metric.Observer) (err error) {
