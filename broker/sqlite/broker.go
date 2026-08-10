@@ -460,15 +460,10 @@ func (b *Broker) QueueSize(ctx context.Context) (count int64, err error) {
 const (
 	queueStatusCountsSQL = "SELECT status, COUNT(*) FROM radish_tasks GROUP BY status;"
 	queueKindsCountsSQL  = "SELECT kind, COUNT(*) FROM radish_tasks GROUP BY kind;"
-	queueTimeRangeSQL    = "SELECT MIN(created), MAX(created), MAX(visible_at) FROM radish_tasks;"
+	queueTimeRangeSQL    = "SELECT CAST(MIN(created) AS DATETIME) AS earliest_at, CAST(MAX(created) AS DATETIME) AS latest_at, CAST(MAX(visible_at) AS DATETIME) AS scheduled_at FROM radish_tasks;"
 )
 
 func (b *Broker) QueueStatus(ctx context.Context) (out *models.QueueStatus, err error) {
-	out = &models.QueueStatus{
-		Statuses: make(map[status.Status]int64, 7),
-		Kinds:    make(map[string]int64),
-	}
-
 	var tx *sql.Tx
 	if tx, err = b.BeginTx(ctx, &sql.TxOptions{ReadOnly: true}); err != nil {
 		return nil, err
@@ -482,22 +477,10 @@ func (b *Broker) QueueStatus(ctx context.Context) (out *models.QueueStatus, err 
 	if statusRows, err = queueStatusCounts.QueryContext(ctx); err != nil {
 		return nil, dbe(err)
 	}
-	defer statusRows.Close()
 
-	for statusRows.Next() {
-		var state status.Status
-		var count int64
-		if err = statusRows.Scan(&state, &count); err != nil {
-			return nil, dbe(err)
-		}
-
-		out.Statuses[state] = count
-		switch {
-		case state <= status.Running:
-			out.Awaiting += count
-		case state > status.Running:
-			out.Completed += count
-		}
+	out = &models.QueueStatus{}
+	if err = out.ScanStatuses(statusRows); err != nil {
+		return nil, dbe(err)
 	}
 
 	queueKindsCounts := tx.StmtContext(ctx, b.queueKindsCountsSQL)
@@ -507,33 +490,28 @@ func (b *Broker) QueueStatus(ctx context.Context) (out *models.QueueStatus, err 
 	if kindRows, err = queueKindsCounts.QueryContext(ctx); err != nil {
 		return nil, dbe(err)
 	}
-	defer kindRows.Close()
 
-	for kindRows.Next() {
-		var kind string
-		var count int64
-		if err = kindRows.Scan(&kind, &count); err != nil {
-			return nil, dbe(err)
-		}
-
-		out.Kinds[kind] = count
+	if err = out.ScanKinds(kindRows); err != nil {
+		return nil, dbe(err)
 	}
 
 	queueTimeRange := tx.StmtContext(ctx, b.queueTimeRangeSQL)
 	defer queueTimeRange.Close()
 
-	if err = queueTimeRange.QueryRowContext(ctx).Scan(&out.Earliest, &out.Latest, &out.ScheduledUntil); err != nil {
+	// TODO: this query seems to be returning strings or int64 integers that cannot be parsed into time.Time.
+	if err = out.ScanTimes(queueTimeRange.QueryRowContext(ctx)); err != nil {
 		return nil, dbe(err)
 	}
 
 	return out, nil
 }
 
+// TODO: this query does not seem to be working as expected and needs to be fixed.
 const timeSeriesSQL = `
 WITH RECURSIVE bins(value) AS (
-	SELECT :after
+	VALUES(:after)
 	UNION ALL
-	SELECT value + :interval
+	SELECT datetime(value + :interval)
 	FROM bins
 	WHERE value < :before
 )
