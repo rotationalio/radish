@@ -29,6 +29,7 @@ const (
 type BrokerTestSuite struct {
 	suite.Suite
 	Broker broker.Broker
+	cancel []context.CancelFunc
 }
 
 func New(b broker.Broker) *BrokerTestSuite {
@@ -37,8 +38,23 @@ func New(b broker.Broker) *BrokerTestSuite {
 	}
 }
 
+func (s *BrokerTestSuite) Context() (ctx context.Context) {
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	s.cancel = append(s.cancel, cancel)
+
+	return ctx
+}
+
+func (s *BrokerTestSuite) TearDownTest() {
+	for _, cancel := range s.cancel {
+		cancel()
+	}
+	s.cancel = nil
+}
+
 func (s *BrokerTestSuite) TestListEmpty() {
-	ctx := context.Background()
+	ctx := s.Context()
 	require := s.Require()
 
 	tasks, err := s.Broker.List(ctx, nil)
@@ -54,7 +70,7 @@ func (s *BrokerTestSuite) TestListEmpty() {
 
 func (s *BrokerTestSuite) TestList() {
 	// Before this test starts enqueue tasks with several kinds and statuses.
-	ctx := context.Background()
+	ctx := s.Context()
 	require := s.Require()
 	configs := []EnqueueConfig{
 		{
@@ -102,7 +118,7 @@ func (s *BrokerTestSuite) TestList() {
 }
 
 func (s *BrokerTestSuite) TestDequeueNotFound() {
-	ctx := context.Background()
+	ctx := s.Context()
 	require := s.Require()
 
 	// Dequeue a task from an empty database; should return ErrNotFound.
@@ -137,7 +153,7 @@ func (s *BrokerTestSuite) TestDequeueNotFound() {
 }
 
 func (s *BrokerTestSuite) TestEnqueueDequeueSingleSuccessfulTask() {
-	ctx := context.Background()
+	ctx := s.Context()
 	require := s.Require()
 	requireTask := RequireTaskFactory(require)
 
@@ -181,7 +197,7 @@ func (s *BrokerTestSuite) TestEnqueueDequeueSingleSuccessfulTask() {
 }
 
 func (s *BrokerTestSuite) TestScheduleDequeueSingleFailedTask() {
-	ctx := context.Background()
+	ctx := s.Context()
 	require := s.Require()
 	requireTask := RequireTaskFactory(require)
 
@@ -235,7 +251,7 @@ func (s *BrokerTestSuite) TestScheduleDequeueSingleFailedTask() {
 }
 
 func (s *BrokerTestSuite) TestEnqueueOnlyOne() {
-	ctx := context.Background()
+	ctx := s.Context()
 	require := s.Require()
 
 	// Enqueue multiple tasks with different kinds with the OnlyOne option
@@ -293,7 +309,7 @@ func (s *BrokerTestSuite) TestEnqueueOnlyOne() {
 }
 
 func (s *BrokerTestSuite) TestEnqueueOnlyOneReplace() {
-	ctx := context.Background()
+	ctx := s.Context()
 	require := s.Require()
 
 	// Enqueue multiple tasks with different kinds with the OnlyOneReplace option
@@ -354,7 +370,7 @@ func (s *BrokerTestSuite) TestEnqueueOnlyOneReplace() {
 }
 
 func (s *BrokerTestSuite) TestScheduleOnlyOne() {
-	ctx := context.Background()
+	ctx := s.Context()
 	require := s.Require()
 
 	// Schedule multiple tasks with different kinds with the OnlyOne option
@@ -413,7 +429,7 @@ func (s *BrokerTestSuite) TestScheduleOnlyOne() {
 }
 
 func (s *BrokerTestSuite) TestScheduleOnlyOneReplace() {
-	ctx := context.Background()
+	ctx := s.Context()
 	require := s.Require()
 
 	// Schedule multiple tasks with different kinds with the OnlyOneReplace option
@@ -476,7 +492,7 @@ func (s *BrokerTestSuite) TestScheduleOnlyOneReplace() {
 }
 
 func (s *BrokerTestSuite) TestQueueSize() {
-	ctx := context.Background()
+	ctx := s.Context()
 	require := s.Require()
 
 	count, err := s.Broker.QueueSize(ctx)
@@ -513,4 +529,98 @@ func (s *BrokerTestSuite) TestQueueSize() {
 	count, err = s.Broker.QueueSize(ctx)
 	require.NoError(err, "unable to get queue size")
 	require.Equal(configs[0].QueueSize()+configs[1].QueueSize(), count, "expected queue size to be the sum of the enqueued tasks")
+}
+
+func (s *BrokerTestSuite) TestQueueStatus() {
+	ctx := s.Context()
+	require := s.Require()
+
+	s.Run("Empty", func() {
+		info, err := s.Broker.QueueStatus(ctx)
+		require.NoError(err, "unable to get queue status")
+		require.NotNil(info)
+
+		require.Empty(info.Statuses, "statuses should be empty")
+		require.Empty(info.Kinds, "kinds should be empty")
+		require.Zero(info.Awaiting, "awaiting should be 0")
+		require.Zero(info.Completed, "completed should be 0")
+		require.False(info.Earliest.Valid, "earliest should be null")
+		require.False(info.Latest.Valid, "latest should be null")
+		require.False(info.ScheduledUntil.Valid, "scheduled until should be null")
+	})
+
+	s.Run("AfterEnqueue", func() {
+		// Enqueue some tasks
+		configs := []EnqueueConfig{
+			{
+				Kind:       "zap",
+				NPending:   16,
+				NRetry:     8,
+				NSuccess:   4,
+				NFailed:    1,
+				NScheduled: 3,
+				NCancelled: 2,
+			},
+			{
+				Kind:       "foo",
+				NPending:   8,
+				NRetry:     1,
+				NSuccess:   122,
+				NFailed:    0,
+				NScheduled: 8,
+				NCancelled: 1,
+			},
+			{
+				Kind:       "bar",
+				NPending:   28,
+				NRetry:     1,
+				NSuccess:   90,
+				NFailed:    2,
+				NScheduled: 2,
+				NCancelled: 0,
+			},
+		}
+
+		var awaiting, completed int64
+		for _, config := range configs {
+			err := config.Enqueue(ctx, s.Broker)
+			require.NoError(err, "unable to enqueue tasks")
+
+			awaiting += int64(config.NPending) + int64(config.NRetry) + int64(config.NScheduled)
+			completed += int64(config.NSuccess) + int64(config.NFailed) + int64(config.NCancelled)
+		}
+
+		info, err := s.Broker.QueueStatus(ctx)
+		require.NoError(err, "unable to get queue status")
+		require.NotNil(info)
+
+		require.Len(info.Statuses, 6, "statuses should have all seven states")
+		require.Len(info.Kinds, 3, "kinds should have all three kinds")
+		require.Equal(awaiting, info.Awaiting, "awaiting should be %d", awaiting)
+		require.Equal(completed, info.Completed, "completed should be %d", completed)
+		require.True(info.Earliest.Valid, "earliest should not be null")
+		require.True(info.Latest.Valid, "latest should not be null")
+		require.True(info.ScheduledUntil.Valid, "scheduled until should not be null")
+	})
+}
+
+func (s *BrokerTestSuite) TestTimeSeries() {
+	ctx := s.Context()
+	require := s.Require()
+
+	s.Run("Empty", func() {
+		now := time.Now().Truncate(time.Minute)
+		after := now.Add(-time.Hour)
+		interval := 5 * time.Minute
+
+		series, err := s.Broker.TimeSeries(ctx, after, now, interval)
+		require.NoError(err, "unable to get time series")
+
+		require.Len(series, 12, "expected 12 periods")
+		for _, period := range series {
+			require.True(period.Timestamp.After(after) || period.Timestamp.Equal(after), "period timestamp should be after or equal to the after time, got %s vs %s", period.Timestamp, after)
+			require.True(period.Timestamp.Before(now), "period timestamp should be before the now time, got %s vs %s", period.Timestamp, now)
+			require.Zero(period.Tasks, "period tasks should be 0, got %d", period.Tasks)
+		}
+	})
 }

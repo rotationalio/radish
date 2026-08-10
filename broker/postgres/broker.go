@@ -12,7 +12,6 @@ import (
 	"go.rtnl.ai/radish/broker/errors"
 	"go.rtnl.ai/radish/broker/options"
 	"go.rtnl.ai/radish/models"
-	"go.rtnl.ai/radish/status"
 	"go.rtnl.ai/x/dsn"
 )
 
@@ -444,14 +443,11 @@ func (b *Broker) QueueSize(ctx context.Context) (count int64, err error) {
 const (
 	queueStatusCountsSQL = "SELECT status, COUNT(*) FROM radish_tasks GROUP BY status;"
 	queueKindsCountsSQL  = "SELECT kind, COUNT(*) FROM radish_tasks GROUP BY kind;"
-	queueTimeRangeSQL    = "SELECT MIN(created), MAX(created), MAX(visible_at) FROM radish_tasks;"
+	queueTimeRangeSQL    = "SELECT MIN(created) AS earliest, MAX(created) AS latest, MAX(visible_at) AS scheduled_until FROM radish_tasks;"
 )
 
 func (b *Broker) QueueStatus(ctx context.Context) (out *models.QueueStatus, err error) {
-	out = &models.QueueStatus{
-		Statuses: make(map[status.Status]int64, 7),
-		Kinds:    make(map[string]int64),
-	}
+	out = &models.QueueStatus{}
 
 	var tx *sql.Tx
 	if tx, err = b.BeginTx(ctx, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead}); err != nil {
@@ -467,23 +463,9 @@ func (b *Broker) QueueStatus(ctx context.Context) (out *models.QueueStatus, err 
 		return nil, dbe(err)
 	}
 
-	for statusRows.Next() {
-		var state status.Status
-		var count int64
-		if err = statusRows.Scan(&state, &count); err != nil {
-			statusRows.Close()
-			return nil, dbe(err)
-		}
-
-		out.Statuses[state] = count
-		switch {
-		case state <= status.Running:
-			out.Awaiting += count
-		case state > status.Running:
-			out.Completed += count
-		}
+	if err = out.ScanStatuses(statusRows); err != nil {
+		return nil, dbe(err)
 	}
-	statusRows.Close()
 
 	queueKindsCounts := tx.StmtContext(ctx, b.queueKindsCountsSQL)
 	defer queueKindsCounts.Close()
@@ -493,22 +475,14 @@ func (b *Broker) QueueStatus(ctx context.Context) (out *models.QueueStatus, err 
 		return nil, dbe(err)
 	}
 
-	for kindRows.Next() {
-		var kind string
-		var count int64
-		if err = kindRows.Scan(&kind, &count); err != nil {
-			kindRows.Close()
-			return nil, dbe(err)
-		}
-
-		out.Kinds[kind] = count
+	if err = out.ScanKinds(kindRows); err != nil {
+		return nil, dbe(err)
 	}
-	kindRows.Close()
 
 	queueTimeRange := tx.StmtContext(ctx, b.queueTimeRangeSQL)
 	defer queueTimeRange.Close()
 
-	if err = queueTimeRange.QueryRowContext(ctx).Scan(&out.Earliest, &out.Latest, &out.ScheduledUntil); err != nil {
+	if err = out.ScanTimes(queueTimeRange.QueryRowContext(ctx)); err != nil {
 		return nil, dbe(err)
 	}
 
@@ -519,7 +493,7 @@ const timeSeriesSQL = `
 WITH bins AS (
 	SELECT generate_series (
 		$1::timestamp,
-		$2::timestamp,
+		$2::timestamp - $3::interval,
 		$3::interval
 	) AS period
 )
@@ -550,11 +524,17 @@ func (b *Broker) TimeSeries(ctx context.Context, after, before time.Time, interv
 		return nil, errors.ErrInvalidTimeRange
 	}
 
+	// Convert the timestamps to UTC.
+	after = after.UTC()
+	before = before.UTC()
+
 	// Truncate the interval to the nearest millisecond.
+	// Convert to a string so that PostgreSQL can convert to an interval type.
 	interval = interval.Truncate(time.Millisecond)
+	pgInterval := fmt.Sprintf("%dms", interval.Milliseconds())
 
 	var rows *sql.Rows
-	if rows, err = b.timeSeriesSQL.QueryContext(ctx, after, before, interval); err != nil {
+	if rows, err = b.timeSeriesSQL.QueryContext(ctx, after, before, pgInterval); err != nil {
 		return nil, dbe(err)
 	}
 	defer rows.Close()

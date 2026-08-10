@@ -421,20 +421,20 @@ func (s *Simple) QueueStatus(ctx context.Context) (out *models.QueueStatus, err 
 			out.Completed++
 		}
 
-		if out.Earliest.IsZero() || task.Created.Before(out.Earliest) {
-			out.Earliest = task.Created
+		if out.Earliest.Time.IsZero() || task.Created.Before(out.Earliest.Time) {
+			out.Earliest = sql.NullTime{Time: task.Created, Valid: true}
 		}
 
-		if out.Latest.IsZero() || task.Created.After(out.Latest) {
-			out.Latest = task.Created
+		if out.Latest.Time.IsZero() || task.Created.After(out.Latest.Time) {
+			out.Latest = sql.NullTime{Time: task.Created, Valid: true}
 		}
 
-		if out.ScheduledUntil.IsZero() || (task.VisibleAt.Valid && task.VisibleAt.Time.After(out.ScheduledUntil)) {
-			out.ScheduledUntil = task.VisibleAt.Time
+		if out.ScheduledUntil.Time.IsZero() || (task.VisibleAt.Valid && task.VisibleAt.Time.After(out.ScheduledUntil.Time)) {
+			out.ScheduledUntil = sql.NullTime{Time: task.VisibleAt.Time, Valid: true}
 		}
 	}
 
-	return nil, nil
+	return out, nil
 }
 
 func (s *Simple) TimeSeries(ctx context.Context, after, before time.Time, interval time.Duration) (series models.Series, err error) {
@@ -460,5 +460,5 @@ func (s *Simple) TimeSeries(ctx context.Context, after, before time.Time, interv
 		}
 	}
 
-	return nil, nil
+	return series, nil
 }
