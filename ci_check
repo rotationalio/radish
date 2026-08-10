@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+
+###################
+# CI Check Script #
+###################
+
+# Description: Runs the checks defined by the Radish CI workflow locally.
+# Usage: ./ci_check [-c]
+#
+# This script runs the following checks after source'ing the .env file if it exists:
+# - gofmt
+# - go generate
+# - go vet
+# - golangci-lint
+# - go test with race detection and coverage
+#
+# Set DATABASE_URL in .env to run the PostgreSQL integration tests locally.
+# Without it, those tests are skipped as they are in the test suite.
+
+set -u -o pipefail
+
+cd "$(dirname "$0")" || exit 1
+
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+
+if [[ "${1:-}" == "-c" ]]; then
+  cached=true
+  gotestargs=("-v" "-coverprofile=coverage.txt" "-covermode=atomic" "-race")
+else
+  cached=false
+  gotestargs=("-v" "-coverprofile=coverage.txt" "-covermode=atomic" "-race" "-count=1")
+fi
+
+failed=()
+
+run_step() {
+  local name="$1"
+  shift
+
+  echo -e "\033[33mRunning: $name\033[0m"
+  if "$@"; then
+    echo -e "\033[32mPASS: $name\033[0m"
+  else
+    echo -e "\033[31mFAIL: $name\033[0m"
+    failed+=("$name")
+  fi
+}
+
+run_step "gofmt check" bash -c '[[ -z "$(gofmt -l .)" ]]'
+run_step "go generate" go generate ./...
+run_step "go vet" go vet ./...
+run_step "golangci-lint" golangci-lint run
+run_step "go test (cached: $cached)" go test "${gotestargs[@]}" ./...
+
+if [[ "${#failed[@]}" -eq 0 ]]; then
+  echo -e "\n\033[32mAll checks passed.\033[0m"
+  exit 0
+fi
+
+echo -e "\n\033[31mFailed steps:\033[0m"
+for step in "${failed[@]}"; do
+  echo "- $step"
+done
+exit 1

@@ -1,11 +1,10 @@
-package radish_test
+package radish
 
 import (
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"go.rtnl.ai/radish"
 )
 
 //============================================================================
@@ -60,9 +59,9 @@ func (t *MockTask) KindAliases() []string {
 //============================================================================
 
 func TestTaskInterface(t *testing.T) {
-	require.Implements(t, (*radish.Task)(nil), new(SleepTask))
-	require.NotImplements(t, (*radish.TaskWithAliases)(nil), new(SleepTask))
-	require.Implements(t, (*radish.TaskWithAliases)(nil), new(SortTask))
-	require.Implements(t, (*radish.Task)(nil), new(RandomFailureTask))
-	require.Implements(t, (*radish.TaskWithAliases)(nil), new(RandomFailureTask))
+	require.Implements(t, (*Task)(nil), new(SleepTask))
+	require.NotImplements(t, (*TaskWithAliases)(nil), new(SleepTask))
+	require.Implements(t, (*TaskWithAliases)(nil), new(SortTask))
+	require.Implements(t, (*Task)(nil), new(RandomFailureTask))
+	require.Implements(t, (*TaskWithAliases)(nil), new(RandomFailureTask))
 }

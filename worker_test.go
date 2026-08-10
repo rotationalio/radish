@@ -1,4 +1,4 @@
-package radish_test
+package radish
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"go.rtnl.ai/radish"
 )
 
 //============================================================================
@@ -17,28 +16,28 @@ import (
 //============================================================================
 
 type SleepWorker struct {
-	radish.WorkerDefaults[*SleepTask]
+	WorkerDefaults[*SleepTask]
 }
 
-func (w *SleepWorker) Do(ctx context.Context, task *radish.TaskInfo[*SleepTask]) error {
+func (w *SleepWorker) Do(ctx context.Context, task *TaskInfo[*SleepTask]) error {
 	time.Sleep(task.Task.Duration)
 	return nil
 }
 
 type SortWorker struct {
-	radish.WorkerDefaults[*SortTask]
+	WorkerDefaults[*SortTask]
 }
 
-func (w *SortWorker) Do(ctx context.Context, task *radish.TaskInfo[*SortTask]) error {
+func (w *SortWorker) Do(ctx context.Context, task *TaskInfo[*SortTask]) error {
 	sort.Ints(task.Task.Numbers)
 	return nil
 }
 
 type RandomFailureWorker struct {
-	radish.WorkerDefaults[*RandomFailureTask]
+	WorkerDefaults[*RandomFailureTask]
 }
 
-func (w *RandomFailureWorker) Do(ctx context.Context, task *radish.TaskInfo[*RandomFailureTask]) error {
+func (w *RandomFailureWorker) Do(ctx context.Context, task *TaskInfo[*RandomFailureTask]) error {
 	if rand.Float64() < task.Task.Probability {
 		return errors.New("random failure")
 	}
@@ -46,11 +45,11 @@ func (w *RandomFailureWorker) Do(ctx context.Context, task *radish.TaskInfo[*Ran
 }
 
 type MockWorker struct {
-	radish.WorkerDefaults[*MockTask]
-	OnDo func(ctx context.Context, task *radish.TaskInfo[*MockTask]) error
+	WorkerDefaults[*MockTask]
+	OnDo func(ctx context.Context, task *TaskInfo[*MockTask]) error
 }
 
-func (w *MockWorker) Do(ctx context.Context, task *radish.TaskInfo[*MockTask]) error {
+func (w *MockWorker) Do(ctx context.Context, task *TaskInfo[*MockTask]) error {
 	if w.OnDo != nil {
 		return w.OnDo(ctx, task)
 	}
@@ -62,20 +61,20 @@ func (w *MockWorker) Do(ctx context.Context, task *radish.TaskInfo[*MockTask]) e
 //============================================================================
 
 func TestWorkerInterface(t *testing.T) {
-	require.Implements(t, (*radish.Worker[*SleepTask])(nil), new(SleepWorker))
-	require.Implements(t, (*radish.Worker[*SortTask])(nil), new(SortWorker))
-	require.Implements(t, (*radish.Worker[*RandomFailureTask])(nil), new(RandomFailureWorker))
+	require.Implements(t, (*Worker[*SleepTask])(nil), new(SleepWorker))
+	require.Implements(t, (*Worker[*SortTask])(nil), new(SortWorker))
+	require.Implements(t, (*Worker[*RandomFailureTask])(nil), new(RandomFailureWorker))
 }
 
 func TestWorkFunc(t *testing.T) {
-	worker := radish.WorkFunc(func(ctx context.Context, task *radish.TaskInfo[*SortTask]) error {
+	worker := WorkFunc(func(ctx context.Context, task *TaskInfo[*SortTask]) error {
 		sort.Ints(task.Task.Numbers)
 		return nil
 	})
-	require.Implements(t, (*radish.Worker[*SortTask])(nil), worker)
-	require.NotImplements(t, (*radish.Worker[*SleepTask])(nil), worker)
+	require.Implements(t, (*Worker[*SortTask])(nil), worker)
+	require.NotImplements(t, (*Worker[*SleepTask])(nil), worker)
 
-	info := &radish.TaskInfo[*SortTask]{
+	info := &TaskInfo[*SortTask]{
 		Task: &SortTask{
 			Numbers: []int{3, 1, 2},
 		},
@@ -92,13 +91,13 @@ func TestRegister(t *testing.T) {
 	conf := mockConfig(t)
 
 	t.Run("HappyPath", func(t *testing.T) {
-		tasks, err := radish.New(conf)
+		tasks, err := New(conf)
 
 		require.NoError(t, err)
 		require.False(t, tasks.IsRunning())
-		require.NoError(t, radish.Register(tasks, new(SleepWorker)))
-		require.NoError(t, radish.Register(tasks, new(SortWorker)))
-		require.NoError(t, radish.Register(tasks, new(RandomFailureWorker)))
+		require.NoError(t, Register(tasks, new(SleepWorker)))
+		require.NoError(t, Register(tasks, new(SortWorker)))
+		require.NoError(t, Register(tasks, new(RandomFailureWorker)))
 
 		workers := tasks.Workers()
 		require.Equal(t, 7, workers.Len())
@@ -109,24 +108,24 @@ func TestRegister(t *testing.T) {
 
 	t.Run("Running", func(t *testing.T) {
 		// Cannot register tasks while the radish instance is running.
-		tasks, err := radish.New(conf)
+		tasks, err := New(conf)
 		require.NoError(t, err)
 
-		require.NoError(t, radish.Register(tasks, new(SleepWorker)))
+		require.NoError(t, Register(tasks, new(SleepWorker)))
 		tasks.MarkRunning()
 
 		require.True(t, tasks.IsRunning())
-		err = radish.Register(tasks, new(SortWorker))
-		require.ErrorIs(t, err, radish.ErrRunning)
+		err = Register(tasks, new(SortWorker))
+		require.ErrorIs(t, err, ErrRunning)
 	})
 }
 
 func TestWorkers(t *testing.T) {
 	t.Run("HappyPath", func(t *testing.T) {
-		workers := &radish.Workers{}
-		radish.AddWorker(workers, new(SleepWorker))
-		radish.AddWorker(workers, new(SortWorker))
-		radish.AddWorker(workers, new(RandomFailureWorker))
+		workers := &Workers{}
+		AddWorker(workers, new(SleepWorker))
+		AddWorker(workers, new(SortWorker))
+		AddWorker(workers, new(RandomFailureWorker))
 
 		require.Equal(t, 7, workers.Len())
 		require.True(t, workers.Has("sleep"))
@@ -140,22 +139,22 @@ func TestWorkers(t *testing.T) {
 	})
 
 	t.Run("Duplicate", func(t *testing.T) {
-		workers := &radish.Workers{}
-		radish.AddWorker(workers, new(SleepWorker))
-		require.Error(t, radish.AddWorkerSafe(workers, new(SleepWorker)))
+		workers := &Workers{}
+		AddWorker(workers, new(SleepWorker))
+		require.Error(t, AddWorkerSafe(workers, new(SleepWorker)))
 	})
 
 	t.Run("DuplicateAlias", func(t *testing.T) {
-		workers := &radish.Workers{}
-		radish.AddWorker(workers, new(SortWorker))
-		require.Error(t, radish.AddWorkerSafe(workers, new(MockWorker)))
+		workers := &Workers{}
+		AddWorker(workers, new(SortWorker))
+		require.Error(t, AddWorkerSafe(workers, new(MockWorker)))
 	})
 
 	t.Run("DuplicatePanics", func(t *testing.T) {
-		workers := &radish.Workers{}
-		radish.AddWorker(workers, new(SortWorker))
+		workers := &Workers{}
+		AddWorker(workers, new(SortWorker))
 		require.Panics(t, func() {
-			radish.AddWorker(workers, new(SortWorker))
+			AddWorker(workers, new(SortWorker))
 		})
 	})
 }
