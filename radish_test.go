@@ -41,7 +41,7 @@ func TestRuntimeErrorHandler(t *testing.T) {
 		receivedErr    error
 	)
 	conf := Config{
-		BookkeepingTimeout: 100 * time.Millisecond,
+		CleanupTimeout: 100 * time.Millisecond,
 		OnError: func(ctx context.Context, task *models.TaskMeta, err error) {
 			receivedCtx = ctx
 			receivedCtxErr = ctx.Err()
@@ -79,13 +79,13 @@ func TestRuntimeErrorHandlerReceivesTask(t *testing.T) {
 	expected := errors.New("success failed")
 	task := &models.TaskMeta{
 		ID:      1,
-		Kind:    new(bookkeepingTask).Kind(),
+		Kind:    new(cleanupTask).Kind(),
 		Payload: []byte(`{}`),
 	}
 	var receivedTask *models.TaskMeta
 	conf := Config{
-		TaskTimeout:        time.Second,
-		BookkeepingTimeout: 100 * time.Millisecond,
+		TaskTimeout:    time.Second,
+		CleanupTimeout: 100 * time.Millisecond,
 		OnError: func(_ context.Context, task *models.TaskMeta, _ error) {
 			receivedTask = task
 		},
@@ -108,7 +108,7 @@ func TestRuntimeErrorHandlerReceivesTask(t *testing.T) {
 		tracer:  noop.NewTracerProvider().Tracer("test"),
 		meter:   meter,
 	}
-	require.NoError(t, AddWorkerSafe(executor.workers, &bookkeepingWorker{mode: "success"}))
+	require.NoError(t, AddWorkerSafe(executor.workers, &cleanupWorker{mode: "success"}))
 
 	more, err := executor.dequeueOne()
 	require.NoError(t, err)
@@ -127,7 +127,7 @@ func TestDefaultErrorHandlerFatal(t *testing.T) {
 		rlog.SetFatalHook(nil)
 	})
 
-	conf := Config{BookkeepingTimeout: 100 * time.Millisecond}
+	conf := Config{CleanupTimeout: 100 * time.Millisecond}
 	executor := &executor{conf: &conf}
 	executor.handleError(context.Background(), nil, errors.New("runtime failure"))
 
@@ -135,12 +135,12 @@ func TestDefaultErrorHandlerFatal(t *testing.T) {
 }
 
 //=====================================
-// Bookkeeping Tests
+// Cleanup Tests
 //=====================================
 
-// TestBookkeepingAfterTaskTimeout verifies that success, retry, and terminal
+// TestCleanupAfterTaskTimeout verifies that success, retry, and terminal
 // failure can be finalized after the worker task context expires.
-func TestBookkeepingAfterTaskTimeout(t *testing.T) {
+func TestCleanupAfterTaskTimeout(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		mode   string
@@ -150,7 +150,7 @@ func TestBookkeepingAfterTaskTimeout(t *testing.T) {
 			name: "success",
 			mode: "success",
 			assert: func(b *mock.Broker) {
-				b.OnSuccess = bookkeepingOperation
+				b.OnSuccess = cleanupOperation
 			},
 		},
 		{
@@ -158,7 +158,7 @@ func TestBookkeepingAfterTaskTimeout(t *testing.T) {
 			mode: "retry",
 			assert: func(b *mock.Broker) {
 				b.OnRetry = func(ctx context.Context, _ int64, _ models.AttemptErrors, _ time.Duration) error {
-					return bookkeepingOperation(ctx, 0)
+					return cleanupOperation(ctx, 0)
 				}
 			},
 		},
@@ -167,17 +167,17 @@ func TestBookkeepingAfterTaskTimeout(t *testing.T) {
 			mode: "failure",
 			assert: func(b *mock.Broker) {
 				b.OnFail = func(ctx context.Context, _ int64, _ models.AttemptErrors) error {
-					return bookkeepingOperation(ctx, 0)
+					return cleanupOperation(ctx, 0)
 				}
 			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			conf := Config{
-				TaskRetries:        1,
-				TaskTimeout:        time.Second,
-				BookkeepingTimeout: 100 * time.Millisecond,
-				Backoff:            backoff.Config{Policy: backoff.PolicyZero},
+				TaskRetries:    1,
+				TaskTimeout:    time.Second,
+				CleanupTimeout: 100 * time.Millisecond,
+				Backoff:        backoff.Config{Policy: backoff.PolicyZero},
 			}
 			broker := &mock.Broker{}
 			tc.assert(broker)
@@ -193,11 +193,11 @@ func TestBookkeepingAfterTaskTimeout(t *testing.T) {
 				tracer:  noop.NewTracerProvider().Tracer("test"),
 				meter:   meter,
 			}
-			require.NoError(t, AddWorkerSafe(executor.workers, &bookkeepingWorker{mode: tc.mode}))
+			require.NoError(t, AddWorkerSafe(executor.workers, &cleanupWorker{mode: tc.mode}))
 
 			task := &models.TaskMeta{
 				ID:      1,
-				Kind:    new(bookkeepingTask).Kind(),
+				Kind:    new(cleanupTask).Kind(),
 				Payload: []byte(`{}`),
 			}
 			require.NoError(t, executor.execute(context.Background(), task))
@@ -205,16 +205,16 @@ func TestBookkeepingAfterTaskTimeout(t *testing.T) {
 	}
 }
 
-// TestBookkeepingAfterUnmarshalFailure verifies that invalid task payloads can
-// still be marked failed through the bookkeeping context.
-func TestBookkeepingAfterUnmarshalFailure(t *testing.T) {
+// TestCleanupAfterUnmarshalFailure verifies that invalid task payloads can
+// still be marked failed through the cleanup context.
+func TestCleanupAfterUnmarshalFailure(t *testing.T) {
 	conf := Config{
-		TaskTimeout:        time.Second,
-		BookkeepingTimeout: 100 * time.Millisecond,
+		TaskTimeout:    time.Second,
+		CleanupTimeout: 100 * time.Millisecond,
 	}
 	broker := &mock.Broker{
 		OnFail: func(ctx context.Context, _ int64, _ models.AttemptErrors) error {
-			return bookkeepingOperation(ctx, 0)
+			return cleanupOperation(ctx, 0)
 		},
 	}
 	meter, err := NewMetrics(nil)
@@ -227,11 +227,11 @@ func TestBookkeepingAfterUnmarshalFailure(t *testing.T) {
 		tracer:  noop.NewTracerProvider().Tracer("test"),
 		meter:   meter,
 	}
-	require.NoError(t, AddWorkerSafe(executor.workers, &bookkeepingWorker{}))
+	require.NoError(t, AddWorkerSafe(executor.workers, &cleanupWorker{}))
 
 	task := &models.TaskMeta{
 		ID:      1,
-		Kind:    new(bookkeepingTask).Kind(),
+		Kind:    new(cleanupTask).Kind(),
 		Payload: []byte(`{"invalid"`),
 	}
 	require.NoError(t, executor.execute(context.Background(), task))
@@ -241,8 +241,8 @@ func TestBookkeepingAfterUnmarshalFailure(t *testing.T) {
 // the unmarshaled task before the worker timeout is evaluated and started.
 func TestWorkerTimeoutReceivesTask(t *testing.T) {
 	conf := Config{
-		TaskTimeout:        time.Second,
-		BookkeepingTimeout: 100 * time.Millisecond,
+		TaskTimeout:    time.Second,
+		CleanupTimeout: 100 * time.Millisecond,
 	}
 	broker := &mock.Broker{
 		OnSuccess: func(context.Context, int64) error {
@@ -252,7 +252,7 @@ func TestWorkerTimeoutReceivesTask(t *testing.T) {
 	meter, err := NewMetrics(nil)
 	require.NoError(t, err)
 
-	worker := &bookkeepingWorker{mode: "success"}
+	worker := &cleanupWorker{mode: "success"}
 	executor := &executor{
 		conf:    &conf,
 		workers: &Workers{},
@@ -264,14 +264,14 @@ func TestWorkerTimeoutReceivesTask(t *testing.T) {
 
 	task := &models.TaskMeta{
 		ID:      1,
-		Kind:    new(bookkeepingTask).Kind(),
+		Kind:    new(cleanupTask).Kind(),
 		Payload: []byte(`{}`),
 	}
 	require.NoError(t, executor.execute(context.Background(), task))
 	require.True(t, worker.timeoutSawTask)
 }
 
-func bookkeepingOperation(ctx context.Context, _ int64) error {
+func cleanupOperation(ctx context.Context, _ int64) error {
 	select {
 	case <-time.After(10 * time.Millisecond):
 		return nil
@@ -280,27 +280,27 @@ func bookkeepingOperation(ctx context.Context, _ int64) error {
 	}
 }
 
-type bookkeepingTask struct{}
+type cleanupTask struct{}
 
-func (*bookkeepingTask) Kind() string {
-	return "bookkeeping"
+func (*cleanupTask) Kind() string {
+	return "cleanup"
 }
 
-type bookkeepingWorker struct {
+type cleanupWorker struct {
 	mode           string
 	timeoutSawTask bool
 }
 
-func (w *bookkeepingWorker) Retry(*TaskInfo[*bookkeepingTask]) *Retry {
+func (w *cleanupWorker) Retry(*TaskInfo[*cleanupTask]) *Retry {
 	return &Retry{Retry: w.mode == "retry"}
 }
 
-func (w *bookkeepingWorker) Timeout(info *TaskInfo[*bookkeepingTask]) time.Duration {
+func (w *cleanupWorker) Timeout(info *TaskInfo[*cleanupTask]) time.Duration {
 	w.timeoutSawTask = info != nil && info.Task != nil
 	return time.Millisecond
 }
 
-func (w *bookkeepingWorker) Do(ctx context.Context, _ *TaskInfo[*bookkeepingTask]) error {
+func (w *cleanupWorker) Do(ctx context.Context, _ *TaskInfo[*cleanupTask]) error {
 	<-ctx.Done()
 	if w.mode == "success" {
 		return nil

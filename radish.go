@@ -504,13 +504,13 @@ func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err erro
 		// If the task cannot be unmarshaled, log it and mark it as a failure.
 		taskLog.Error("could not unmarshal task", "error", err)
 
-		// Use a separate context for bookkeeping.
-		bookkeepingctx, bookkeepingcancel := e.bookkeepingContext(ctx)
-		defer bookkeepingcancel()
+		// Use a separate context for cleanup.
+		cleanupctx, cleanupcancel := e.cleanupContext(ctx)
+		defer cleanupcancel()
 
 		// Mark the task as failed.
 		task.AddError(err, "")
-		if err = e.broker.Fail(bookkeepingctx, task.ID, task.Errors); err != nil {
+		if err = e.broker.Fail(cleanupctx, task.ID, task.Errors); err != nil {
 			e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:critical")
 			taskLog.Error("could not mark task as failed", "error", err)
 			return err
@@ -535,9 +535,9 @@ func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err erro
 	defer taskcancel()
 
 	if taskerr := e.recoveringDo(worker, taskctx); taskerr != nil {
-		// Use a separate context for bookkeeping.
-		bookkeepingctx, bookkeepingcancel := e.bookkeepingContext(ctx)
-		defer bookkeepingcancel()
+		// Use a separate context for cleanup.
+		cleanupctx, cleanupcancel := e.cleanupContext(ctx)
+		defer cleanupcancel()
 
 		// Add the error to the task.
 		AddError(task, taskerr)
@@ -557,7 +557,7 @@ func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err erro
 			}
 
 			// Update the broker with the retry information.
-			if err = e.broker.Retry(bookkeepingctx, task.ID, task.Errors, delay); err != nil {
+			if err = e.broker.Retry(cleanupctx, task.ID, task.Errors, delay); err != nil {
 				e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:critical")
 				taskLog.Error("could not retry task", "error", err)
 				return err
@@ -569,7 +569,7 @@ func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err erro
 			return nil
 		} else {
 			// Mark the task as failed.
-			if err = e.broker.Fail(bookkeepingctx, task.ID, task.Errors); err != nil {
+			if err = e.broker.Fail(cleanupctx, task.ID, task.Errors); err != nil {
 				e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:critical")
 				taskLog.Error("could not mark task as failed", "error", err)
 				return err
@@ -586,12 +586,12 @@ func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err erro
 		}
 
 	} else {
-		// Use a separate context for bookkeeping.
-		bookkeepingctx, bookkeepingcancel := e.bookkeepingContext(ctx)
-		defer bookkeepingcancel()
+		// Use a separate context for cleanup.
+		cleanupctx, cleanupcancel := e.cleanupContext(ctx)
+		defer cleanupcancel()
 
 		// Mark the task as successful.
-		if err = e.broker.Success(bookkeepingctx, task.ID); err != nil {
+		if err = e.broker.Success(cleanupctx, task.ID); err != nil {
 			// Inability to mark a task as successful is a fatal error.
 			e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:critical")
 			taskLog.Error("could not mark task as successful", "error", err)
@@ -609,20 +609,20 @@ func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err erro
 	}
 }
 
-func (e *executor) bookkeepingContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(ctx), e.conf.BookkeepingTimeout)
+func (e *executor) cleanupContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), e.conf.CleanupTimeout)
 }
 
 // handleError reports a runtime executor error. Errors are fatal by default;
 // configuring OnError overrides the default and delegates handling to the
-// application with a detached bookkeeping context.
+// application with a detached cleanup context.
 func (e *executor) handleError(ctx context.Context, task *models.TaskMeta, err error) {
 	if e.conf.OnError == nil {
 		rlog.Fatal("fatal error while executing task", "error", err)
 		return
 	}
 
-	ctx, cancel := e.bookkeepingContext(ctx)
+	ctx, cancel := e.cleanupContext(ctx)
 	defer cancel()
 	defer func() {
 		if r := recover(); r != nil {

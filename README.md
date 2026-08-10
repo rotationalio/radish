@@ -165,7 +165,7 @@ explicitly or loaded from the environment using
 | `NumWorkers`     | `RADISH_NUM_WORKERS`     | `8`      | Number of executor goroutines polling for tasks.                                           |
 | `TaskRetries`    | `RADISH_TASK_RETRIES`    | `3`      | Maximum default retry attempts per task.                                                   |
 | `TaskTimeout`    | `RADISH_TASK_TIMEOUT`    | `60s`    | Default and maximum time allowed per task; worker-specific timeouts longer than this are capped at this value. |
-| `BookkeepingTimeout` | `RADISH_BOOKKEEPING_TIMEOUT` | `5s` | Time allowed to finalize a task after worker execution, independent of `TaskTimeout`. |
+| `CleanupTimeout` | `RADISH_CLEANUP_TIMEOUT` | `5s` | Time allowed to clean up a task after worker execution, independent of `TaskTimeout`. |
 | `PollInterval`   | `RADISH_POLL_INTERVAL`   | `5s`     | How often each executor polls for new work.                                                |
 | `PollJitter`     | `RADISH_POLL_JITTER`     | `125ms`  | Standard deviation of jitter applied to the poll interval to avoid thundering herds.       |
 | `Retention`      | `RADISH_RETENTION`       | `24h`    | How long completed/failed tasks are retained when calling `Vacuum`.                        |
@@ -193,7 +193,7 @@ export DATABASE_URL=postgres://radish@localhost:5432/radish?sslmode=disable
 export RADISH_NUM_WORKERS=8
 export RADISH_TASK_RETRIES=3
 export RADISH_TASK_TIMEOUT=120s
-export RADISH_BOOKKEEPING_TIMEOUT=5s
+export RADISH_CLEANUP_TIMEOUT=5s
 export RADISH_POLL_INTERVAL=15s
 export RADISH_POLL_JITTER=1250ms
 export RADISH_RETENTION=72h
@@ -212,7 +212,7 @@ cfg := &radish.Config{
     NumWorkers:   8,
     TaskRetries:  5,
     TaskTimeout:  2 * time.Minute,
-    BookkeepingTimeout: 5 * time.Second,
+    CleanupTimeout: 5 * time.Second,
     PollInterval: 10 * time.Second,
     PollJitter:   500 * time.Millisecond,
     Retention:    72 * time.Hour,

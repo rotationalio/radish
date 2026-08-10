@@ -12,7 +12,7 @@ import (
 // ErrorHandler handles a runtime executor error. The task is nil when the
 // error occurs while dequeuing; otherwise it contains the task being worked.
 // The context is detached from the worker task context and has the configured
-// bookkeeping timeout. The handler runs on the executor goroutine and should
+// cleanup timeout. The handler runs on the executor goroutine and should
 // not synchronously call Shutdown.
 type ErrorHandler func(context.Context, *models.TaskMeta, error)
 
