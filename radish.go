@@ -392,7 +392,7 @@ func (e *executor) run(wg *sync.WaitGroup) {
 						return
 					}
 
-					rlog.Fatal("fatal error while executing task", "error", err)
+					e.handleError(context.Background(), nil, err)
 					return
 				}
 			}
@@ -410,7 +410,7 @@ func (e *executor) shutdown() {
 }
 
 // Keep dequeuing tasks from the broker and executing them until there are no more
-// tasks to dequeue or an error occurs (errors are considered fatal).
+// tasks to dequeue or an error occurs.
 func (e *executor) dequeue(stop <-chan struct{}) (err error) {
 	for {
 		// Do not dequeue a task if the stop signal is received.
@@ -447,13 +447,15 @@ func (e *executor) dequeueOne() (more bool, err error) {
 
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "unable to dequeue task")
-		return false, err
+		e.handleError(ctx, nil, err)
+		return false, nil
 	}
 
 	if err = e.execute(ctx, task); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "unable to execute task")
-		return false, err
+		e.handleError(ctx, task, err)
+		return false, nil
 	}
 
 	// Successfully executed the task, continue dequeuing.
@@ -497,7 +499,30 @@ func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err erro
 		return nil
 	}
 
-	// Get the task timeout from the worker.
+	// Unmarshal the task.
+	if err = worker.UnmarshalTask(); err != nil {
+		// If the task cannot be unmarshaled, log it and mark it as a failure.
+		taskLog.Error("could not unmarshal task", "error", err)
+
+		// Use a separate context for cleanup.
+		cleanupctx, cleanupcancel := e.cleanupContext(ctx)
+		defer cleanupcancel()
+
+		// Mark the task as failed.
+		task.AddError(err, "")
+		if err = e.broker.Fail(cleanupctx, task.ID, task.Errors); err != nil {
+			e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:critical")
+			taskLog.Error("could not mark task as failed", "error", err)
+			return err
+		}
+		e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "json:unmarshal_error")
+		return nil
+	}
+
+	// Get the task timeout from the worker after unmarshaling so custom timeout
+	// handlers can inspect the task payload. The maximum allowed timeout is the
+	// configured task timeout, so if the worker's timeout is longer then the
+	// default is applied here.
 	timeout := worker.Timeout()
 	if timeout == 0 || timeout > e.conf.TaskTimeout {
 		taskLog.Debug("using configured task timeout", "original_timeout", timeout)
@@ -509,23 +534,11 @@ func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err erro
 	taskctx, taskcancel := context.WithTimeout(ctx, timeout)
 	defer taskcancel()
 
-	// Unmarshal the task.
-	if err = worker.UnmarshalTask(); err != nil {
-		// If the task cannot be unmarshaled, log it and mark it as a failure.
-		taskLog.Error("could not unmarshal task", "error", err)
-
-		// Mark the task as failed.
-		task.AddError(err, "")
-		if err = e.broker.Fail(taskctx, task.ID, task.Errors); err != nil {
-			e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:critical")
-			taskLog.Error("could not mark task as failed", "error", err)
-			return err
-		}
-		e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "json:unmarshal_error")
-		return nil
-	}
-
 	if taskerr := e.recoveringDo(worker, taskctx); taskerr != nil {
+		// Use a separate context for cleanup.
+		cleanupctx, cleanupcancel := e.cleanupContext(ctx)
+		defer cleanupcancel()
+
 		// Add the error to the task.
 		AddError(task, taskerr)
 
@@ -544,7 +557,7 @@ func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err erro
 			}
 
 			// Update the broker with the retry information.
-			if err = e.broker.Retry(taskctx, task.ID, task.Errors, delay); err != nil {
+			if err = e.broker.Retry(cleanupctx, task.ID, task.Errors, delay); err != nil {
 				e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:critical")
 				taskLog.Error("could not retry task", "error", err)
 				return err
@@ -556,7 +569,7 @@ func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err erro
 			return nil
 		} else {
 			// Mark the task as failed.
-			if err = e.broker.Fail(taskctx, task.ID, task.Errors); err != nil {
+			if err = e.broker.Fail(cleanupctx, task.ID, task.Errors); err != nil {
 				e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:critical")
 				taskLog.Error("could not mark task as failed", "error", err)
 				return err
@@ -573,8 +586,12 @@ func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err erro
 		}
 
 	} else {
+		// Use a separate context for cleanup.
+		cleanupctx, cleanupcancel := e.cleanupContext(ctx)
+		defer cleanupcancel()
+
 		// Mark the task as successful.
-		if err = e.broker.Success(taskctx, task.ID); err != nil {
+		if err = e.broker.Success(cleanupctx, task.ID); err != nil {
 			// Inability to mark a task as successful is a fatal error.
 			e.meter.recordTaskDurationFailed(ctx, time.Since(start), task.Kind, "broker:critical")
 			taskLog.Error("could not mark task as successful", "error", err)
@@ -590,6 +607,30 @@ func (e *executor) execute(ctx context.Context, task *models.TaskMeta) (err erro
 		e.meter.recordTaskDuration(ctx, time.Since(start), task.Kind)
 		return nil
 	}
+}
+
+func (e *executor) cleanupContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), e.conf.CleanupTimeout)
+}
+
+// handleError reports a runtime executor error. Errors are fatal by default;
+// configuring OnError overrides the default and delegates handling to the
+// application with a detached cleanup context.
+func (e *executor) handleError(ctx context.Context, task *models.TaskMeta, err error) {
+	if e.conf.OnError == nil {
+		rlog.Fatal("fatal error while executing task", "error", err)
+		return
+	}
+
+	ctx, cancel := e.cleanupContext(ctx)
+	defer cancel()
+	defer func() {
+		if r := recover(); r != nil {
+			rlog.Error("runtime error handler panicked", "error", Recover(r))
+		}
+	}()
+
+	e.conf.OnError(ctx, task, err)
 }
 
 func (e *executor) recoveringDo(worker internal.Worker, ctx context.Context) (err error) {

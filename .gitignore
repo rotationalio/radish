@@ -21,6 +21,10 @@ tmp/
 
 # IDEs
 .vscode
+.zed
 
 # OS files
 .DS_Store
+
+# coverage
+coverage.txt
