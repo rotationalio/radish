@@ -13,10 +13,10 @@ import (
 // Version component constants for the current build.
 const (
 	VersionMajor         = 1
-	VersionMinor         = 3
-	VersionPatch         = 1
+	VersionMinor         = 4
+	VersionPatch         = 0
 	VersionReleaseLevel  = "beta"
-	VersionReleaseNumber = 7
+	VersionReleaseNumber = 8
 )
 
 // Set the GitVersion via -ldflags="-X 'go.rtnl.ai/endeavor/pkg.GitVersion=$(git rev-parse --short HEAD)'"
